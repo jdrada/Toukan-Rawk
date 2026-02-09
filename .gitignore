@@ -1,0 +1,14 @@
+temp_docs/
+node_modules/
+.env
+.env.local
+.DS_Store
+*.pyc
+__pycache__/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.idea/
+.vscode/
