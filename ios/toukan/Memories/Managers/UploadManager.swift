@@ -1,6 +1,6 @@
 //
 //  UploadManager.swift
-//  toukan
+//  Memories
 //
 
 import Foundation

@@ -1,6 +1,6 @@
 //
 //  StopRecordingIntent.swift
-//  toukan
+//  Memories
 //
 
 import AppIntents
@@ -8,14 +8,14 @@ import SwiftData
 
 struct StopRecordingIntent: AppIntent {
     static var title: LocalizedStringResource = "Stop Recording"
-    static var description: IntentDescription = "Stop recording audio with Toukan"
+    static var description: IntentDescription = "Stop recording audio with Memories"
     static var openAppWhenRun = true
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let recordingManager = await RecordingManager.shared
 
         guard await recordingManager.isRecording else {
-            return .result(dialog: "Toukan isn't recording right now.")
+            return .result(dialog: "Memories isn't recording right now.")
         }
 
         guard let result = await recordingManager.stopRecording() else {

@@ -1,11 +1,11 @@
 //
-//  ToukanShortcuts.swift
-//  toukan
+//  MemoriesShortcuts.swift
+//  Memories
 //
 
 import AppIntents
 
-struct ToukanShortcuts: AppShortcutsProvider {
+struct MemoriesShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: StartRecordingIntent(),

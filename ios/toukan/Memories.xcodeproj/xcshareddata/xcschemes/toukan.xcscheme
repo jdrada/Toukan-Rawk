@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7D8D744F2F3B89490065ADB8"
-               BuildableName = "toukan.app"
-               BlueprintName = "toukan"
-               ReferencedContainer = "container:toukan.xcodeproj">
+               BuildableName = "Memories.app"
+               BlueprintName = "Memories"
+               ReferencedContainer = "container:Memories.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7D8D744F2F3B89490065ADB8"
-            BuildableName = "toukan.app"
-            BlueprintName = "toukan"
-            ReferencedContainer = "container:toukan.xcodeproj">
+            BuildableName = "Memories.app"
+            BlueprintName = "Memories"
+            ReferencedContainer = "container:Memories.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7D8D744F2F3B89490065ADB8"
-            BuildableName = "toukan.app"
-            BlueprintName = "toukan"
-            ReferencedContainer = "container:toukan.xcodeproj">
+            BuildableName = "Memories.app"
+            BlueprintName = "Memories"
+            ReferencedContainer = "container:Memories.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

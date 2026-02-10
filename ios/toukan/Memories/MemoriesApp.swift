@@ -1,13 +1,13 @@
 //
-//  toukanApp.swift
-//  toukan
+//  MemoriesApp.swift
+//  Memories
 //
 
 import SwiftUI
 import SwiftData
 
 @main
-struct toukanApp: App {
+struct MemoriesApp: App {
     let recordingManager = RecordingManager.shared
     let uploadManager = UploadManager.shared
 

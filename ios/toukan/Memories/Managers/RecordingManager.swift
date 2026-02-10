@@ -1,6 +1,6 @@
 //
 //  RecordingManager.swift
-//  toukan
+//  Memories
 //
 
 import AVFoundation
@@ -124,7 +124,7 @@ final class RecordingManager: NSObject {
         formatter.formatOptions = [.withFullDate, .withFullTime]
         let timestamp = formatter.string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
-        let filename = "toukan_\(timestamp).m4a"
+        let filename = "memory_\(timestamp).m4a"
 
         let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let fileURL = documentsURL.appendingPathComponent(filename)
@@ -168,7 +168,7 @@ final class RecordingManager: NSObject {
     private func updateNowPlayingInfo() {
         var nowPlayingInfo = [String: Any]()
         nowPlayingInfo[MPMediaItemPropertyTitle] = "Recording in Progress"
-        nowPlayingInfo[MPMediaItemPropertyArtist] = "Toukan"
+        nowPlayingInfo[MPMediaItemPropertyArtist] = "Memories"
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = 0 // Unknown duration for live recording

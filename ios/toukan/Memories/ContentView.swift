@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  toukan
+//  Memories
 //
 
 import SwiftUI

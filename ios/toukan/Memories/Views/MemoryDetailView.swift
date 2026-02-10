@@ -1,6 +1,6 @@
 //
 //  MemoryDetailView.swift
-//  toukan
+//  Memories
 //
 
 import SwiftUI

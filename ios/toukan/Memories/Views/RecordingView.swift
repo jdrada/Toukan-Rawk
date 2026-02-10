@@ -1,6 +1,6 @@
 //
 //  RecordingView.swift
-//  toukan
+//  Memories
 //
 
 import SwiftUI
@@ -41,7 +41,7 @@ struct RecordingView: View {
 
     private var idleState: some View {
         VStack(spacing: 32) {
-            Text("Toukan")
+            Text("Memories")
                 .font(.system(size: 36, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
 
@@ -63,7 +63,7 @@ struct RecordingView: View {
             }
             .accessibilityLabel("Start Recording")
 
-            Text("Or say \"Hey Siri, start recording with Toukan\"")
+            Text("Or say \"Hey Siri, start recording with Memories\"")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
