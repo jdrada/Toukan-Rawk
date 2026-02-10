@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ProgressIndicator } from "@/components/ui/progress-indicator";
 import { Button } from "@/components/ui/button";
 import { MemoryResponse, MemoryStatus } from "@/types/memory";
-import { retryMemoryProcessing } from "@/lib/api";
-import { RefreshCw } from "lucide-react";
+import { retryMemoryProcessing, deleteMemory } from "@/lib/api";
+import { RefreshCw, Trash2 } from "lucide-react";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -28,6 +29,7 @@ function formatDuration(seconds: number): string {
 
 export function MemoryCard({ memory }: { memory: MemoryResponse }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const title = memory.title || "Untitled Memory";
   const summary =
     memory.summary && memory.summary.length > 150
@@ -42,10 +44,26 @@ export function MemoryCard({ memory }: { memory: MemoryResponse }) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMemory(memory.id),
+    onSuccess: () => {
+      // Invalidate memories list to remove deleted item
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+
   const handleRetry = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     retryMutation.mutate();
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm("Are you sure you want to delete this memory?")) {
+      deleteMutation.mutate();
+    }
   };
 
   const showProgress =
@@ -57,10 +75,21 @@ export function MemoryCard({ memory }: { memory: MemoryResponse }) {
       <Card className="transition-colors hover:bg-accent/50">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">
-            <CardTitle className="text-base font-semibold leading-snug">
+            <CardTitle className="text-base font-semibold leading-snug flex-1">
               {title}
             </CardTitle>
-            <StatusBadge status={memory.status as MemoryStatus} />
+            <div className="flex items-center gap-2">
+              <StatusBadge status={memory.status as MemoryStatus} />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <time>{formatDate(memory.created_at)}</time>
