@@ -1,5 +1,24 @@
 temp_docs/
 .claude/
+.agents/
+
+# Backend
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/*.egg-info/
+backend/dist/
+backend/build/
+
+# Web
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+web/.env.production.local
+
+# General
 node_modules/
 .env
 .env.local
@@ -13,3 +32,4 @@ build/
 .pytest_cache/
 .idea/
 .vscode/
+*.log
