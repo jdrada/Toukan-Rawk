@@ -75,6 +75,20 @@ class TestMemoriesEndpoint:
         assert response.json()["id"] == memory_id
 
     @pytest.mark.asyncio
+    async def test_list_with_search_param(self, async_client: AsyncClient):
+        response = await async_client.get("/memories", params={"search": "test"})
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+    @pytest.mark.asyncio
+    async def test_list_with_status_filter(self, async_client: AsyncClient):
+        response = await async_client.get("/memories", params={"status": "ready"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+
+    @pytest.mark.asyncio
     async def test_get_nonexistent_memory_returns_404(self, async_client: AsyncClient):
         response = await async_client.get("/memories/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404

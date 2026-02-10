@@ -101,9 +101,13 @@ class MemoryService:
         self,
         page: int = 1,
         page_size: int = 20,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
     ) -> MemoryListResponse:
-        """List memories with pagination."""
-        items, total = await self._repository.list_all(page=page, page_size=page_size)
+        """List memories with pagination, optional search and status filter."""
+        items, total = await self._repository.list_all(
+            page=page, page_size=page_size, search=search, status=status,
+        )
         return MemoryListResponse(
             items=[MemoryResponse.model_validate(m) for m in items],
             total=total,

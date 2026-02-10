@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ResourceNotFoundError
@@ -45,21 +45,36 @@ class MemoryRepository:
         self,
         page: int = 1,
         page_size: int = 20,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
     ) -> Tuple[List[MemoryORM], int]:
-        """Return a paginated list of memories and the total count."""
+        """Return a paginated list of memories and the total count.
+
+        Args:
+            search: ILIKE filter on title and summary columns.
+            status: Exact match filter on status column.
+        """
+        base = select(MemoryORM)
+
+        if search:
+            pattern = f"%{search}%"
+            base = base.where(
+                or_(
+                    MemoryORM.title.ilike(pattern),
+                    MemoryORM.summary.ilike(pattern),
+                )
+            )
+        if status:
+            base = base.where(MemoryORM.status == status)
+
         # Total count
-        count_stmt = select(func.count()).select_from(MemoryORM)
+        count_stmt = select(func.count()).select_from(base.subquery())
         total_result = await self._session.execute(count_stmt)
         total = total_result.scalar_one()
 
         # Paginated results
         offset = (page - 1) * page_size
-        stmt = (
-            select(MemoryORM)
-            .order_by(MemoryORM.created_at.desc())
-            .offset(offset)
-            .limit(page_size)
-        )
+        stmt = base.order_by(MemoryORM.created_at.desc()).offset(offset).limit(page_size)
         result = await self._session.execute(stmt)
         items = list(result.scalars().all())
 

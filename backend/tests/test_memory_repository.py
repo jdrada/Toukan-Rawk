@@ -57,6 +57,57 @@ class TestMemoryRepository:
         assert len(items2) == 1  # 5th item on page 3
 
     @pytest.mark.asyncio
+    async def test_list_all_search_by_title(self, memory_repository: MemoryRepository, db_session):
+        m1 = await memory_repository.create(audio_url="s3://bucket/a.webm", title="Sprint Planning")
+        m2 = await memory_repository.create(audio_url="s3://bucket/b.webm", title="Daily Standup")
+        await db_session.flush()
+
+        items, total = await memory_repository.list_all(search="sprint")
+        assert total == 1
+        assert items[0].title == "Sprint Planning"
+
+    @pytest.mark.asyncio
+    async def test_list_all_search_by_summary(self, memory_repository: MemoryRepository, db_session):
+        m1 = await memory_repository.create(audio_url="s3://bucket/a.webm")
+        m2 = await memory_repository.create(audio_url="s3://bucket/b.webm")
+        await db_session.flush()
+        await memory_repository.update_processing_results(
+            UUID(m1.id), summary="Discussed budget allocation", status="ready",
+        )
+        await memory_repository.update_processing_results(
+            UUID(m2.id), summary="Team building activities", status="ready",
+        )
+        await db_session.flush()
+
+        items, total = await memory_repository.list_all(search="budget")
+        assert total == 1
+
+    @pytest.mark.asyncio
+    async def test_list_all_filter_by_status(self, memory_repository: MemoryRepository, db_session):
+        m1 = await memory_repository.create(audio_url="s3://bucket/a.webm")
+        m2 = await memory_repository.create(audio_url="s3://bucket/b.webm")
+        await db_session.flush()
+        await memory_repository.update_status(UUID(m1.id), "ready")
+        await db_session.flush()
+
+        items, total = await memory_repository.list_all(status="ready")
+        assert total == 1
+        assert items[0].status == "ready"
+
+    @pytest.mark.asyncio
+    async def test_list_all_search_and_status_combined(self, memory_repository: MemoryRepository, db_session):
+        m1 = await memory_repository.create(audio_url="s3://bucket/a.webm", title="Sprint Planning")
+        m2 = await memory_repository.create(audio_url="s3://bucket/b.webm", title="Sprint Review")
+        await db_session.flush()
+        await memory_repository.update_status(UUID(m1.id), "ready")
+        await db_session.flush()
+
+        # Both match "sprint" but only m1 has status "ready"
+        items, total = await memory_repository.list_all(search="sprint", status="ready")
+        assert total == 1
+        assert items[0].title == "Sprint Planning"
+
+    @pytest.mark.asyncio
     async def test_update_status(self, memory_repository: MemoryRepository):
         memory = await memory_repository.create(audio_url="s3://bucket/test.webm")
         updated = await memory_repository.update_status(UUID(memory.id), "processing")
