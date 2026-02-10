@@ -27,6 +27,7 @@ final class RecordingManager: NSObject {
     private var recordingStartTime: Date?
     private var accumulatedTime: TimeInterval = 0
     private var currentFilePath: String?
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
     private override init() {
         super.init()
@@ -64,6 +65,7 @@ final class RecordingManager: NSObject {
 
         recorder.stop()
         stopTimer()
+        endBackgroundTask()
         deactivateAudioSession()
         clearNowPlayingInfo()
 
@@ -79,6 +81,8 @@ final class RecordingManager: NSObject {
         accumulatedTime = 0
         recordingStartTime = nil
 
+        print("[RecordingManager] Recording stopped - duration: \(duration)s, file: \(filePath)")
+
         guard !filePath.isEmpty else { return nil }
         return (filePath: filePath, duration: duration)
     }
@@ -87,11 +91,13 @@ final class RecordingManager: NSObject {
 
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        // .playAndRecord allows recording with background audio support
-        // .defaultToSpeaker routes playback to speaker instead of receiver
-        // .allowBluetooth enables bluetooth headset support for recording
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-        try session.setActive(true)
+        // .record category for background recording
+        // .measurement mode prevents system from modifying audio
+        // .mixWithOthers allows other apps to play audio while recording
+        // .allowBluetooth enables bluetooth headset support
+        try session.setCategory(.record, mode: .measurement, options: [.mixWithOthers, .allowBluetooth])
+        try session.setActive(true, options: [])
+        print("[RecordingManager] Audio session configured and activated")
     }
 
     private func deactivateAudioSession() {
@@ -247,20 +253,64 @@ final class RecordingManager: NSObject {
     @objc private func handleAppDidEnterBackground(_ notification: Notification) {
         guard isRecording else { return }
 
-        // Ensure audio session stays active in background
-        try? AVAudioSession.sharedInstance().setActive(true)
+        print("[RecordingManager] App entered background - maintaining recording")
 
-        // Recording continues in background thanks to audio background mode
-        print("App entered background - recording continues")
+        // Start a background task to ensure recording continues
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "AudioRecording") { [weak self] in
+            self?.endBackgroundTask()
+        }
+
+        // Ensure audio session stays active
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setActive(true, options: [])
+            print("[RecordingManager] Audio session kept active in background")
+        } catch {
+            print("[RecordingManager] Failed to keep audio session active: \(error)")
+        }
+
+        // Verify recorder is still recording
+        if let recorder = audioRecorder, !recorder.isRecording {
+            print("[RecordingManager] WARNING: Recorder stopped! Attempting to restart...")
+            recorder.record()
+        }
     }
 
     @objc private func handleAppWillEnterForeground(_ notification: Notification) {
         guard isRecording else { return }
 
-        // Ensure audio session is still active
-        try? AVAudioSession.sharedInstance().setActive(true)
+        print("[RecordingManager] App entering foreground")
 
-        print("App entering foreground - recording continues")
+        // End background task
+        endBackgroundTask()
+
+        // Verify audio session
+        do {
+            let session = AVAudioSession.sharedInstance()
+            if !session.isOtherAudioPlaying {
+                try session.setActive(true, options: [])
+            }
+            print("[RecordingManager] Audio session verified in foreground")
+        } catch {
+            print("[RecordingManager] Failed to verify audio session: \(error)")
+        }
+
+        // Verify recorder is still recording
+        if let recorder = audioRecorder {
+            let wasRecording = recorder.isRecording
+            print("[RecordingManager] Recorder status: \(wasRecording ? "recording" : "stopped")")
+            if !wasRecording {
+                print("[RecordingManager] WARNING: Recorder was stopped during background!")
+            }
+        }
+    }
+
+    private func endBackgroundTask() {
+        if backgroundTaskID != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            backgroundTaskID = .invalid
+            print("[RecordingManager] Background task ended")
+        }
     }
 }
 
