@@ -12,11 +12,15 @@ echo "✅ LocalStack is ready"
 
 # Create S3 bucket
 echo "📦 Creating S3 bucket: rawk-audio-bucket"
-aws --endpoint-url=http://localhost:4566 s3 mb s3://rawk-audio-bucket 2>/dev/null || echo "Bucket already exists"
+curl -X PUT http://localhost:4566/rawk-audio-bucket 2>/dev/null
+echo ""
 
 # Create SQS queue
 echo "📨 Creating SQS queue: rawk-processing"
-aws --endpoint-url=http://localhost:4566 sqs create-queue --queue-name rawk-processing 2>/dev/null || echo "Queue already exists"
+curl -s -X POST "http://localhost:4566/" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "Action=CreateQueue&QueueName=rawk-processing&Version=2012-11-05" > /dev/null
+echo "Queue created"
 
 echo "✅ LocalStack setup complete!"
 echo ""
