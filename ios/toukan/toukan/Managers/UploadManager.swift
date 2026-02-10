@@ -88,15 +88,19 @@ final class UploadManager: NSObject {
         let fileURL = documentsURL.appendingPathComponent(filePath)
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("❌ Upload failed: File not found at \(fileURL.path)")
             markRecording(id: recordingId, status: .failed)
             return
         }
 
+        print("📤 Starting upload to: \(APIConfig.uploadURL)")
+        
         // Build multipart form data and write to temp file for background upload
         let boundary = UUID().uuidString
         var request = URLRequest(url: APIConfig.uploadURL)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".tmp")
         do {
@@ -164,34 +168,41 @@ extension UploadManager: URLSessionDataDelegate {
               let recordingId = UUID(uuidString: recordingIdString) else { return }
 
         if let error {
-            print("Upload failed: \(error)")
-            markRecording(id: recordingId, status: .failed)
-            scheduleRetry(for: recordingId)
+            print("❌ Upload failed with error: \(error.localizedDescription)")
+            Task {
+                await markRecording(id: recordingId, status: .failed)
+                await scheduleRetry(for: recordingId)
+            }
             return
         }
 
-        guard let httpResponse = task.response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            markRecording(id: recordingId, status: .failed)
-            scheduleRetry(for: recordingId)
+        guard let httpResponse = task.response as? HTTPURLResponse else {
+            print("❌ Upload failed: No HTTP response")
+            Task {
+                await markRecording(id: recordingId, status: .failed)
+                await scheduleRetry(for: recordingId)
+            }
             return
         }
 
-        // Response body will be received in urlSession(_:dataTask:didReceive:)
-        // For background sessions, success status is sufficient
-        markRecording(id: recordingId, status: .uploaded)
-    }
-
-    nonisolated func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        guard let recordingIdString = dataTask.taskDescription,
-              let recordingId = UUID(uuidString: recordingIdString) else { return }
-
-        // Parse memory_id from response
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let memoryId = json["memory_id"] as? String {
-            markRecording(id: recordingId, status: .uploaded, memoryId: memoryId)
+        if (200...299).contains(httpResponse.statusCode) {
+            print("✅ Upload successful! Status: \(httpResponse.statusCode)")
+            // For background sessions, try to get response data if available
+            // If not available, mark as uploaded anyway
+            Task {
+                await markRecording(id: recordingId, status: .uploaded)
+            }
+        } else {
+            print("❌ Upload failed with status code: \(httpResponse.statusCode)")
+            Task {
+                await markRecording(id: recordingId, status: .failed)
+                await scheduleRetry(for: recordingId)
+            }
         }
     }
+
+    // Note: didReceive data is NOT called for background upload tasks
+    // Background sessions only support task completion callbacks
 
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         // Called when all background tasks are complete
