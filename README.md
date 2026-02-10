@@ -5,6 +5,7 @@ Transform conversations into actionable memories using AI.
 ## Quick Start
 
 ### Prerequisites
+
 - Python 3.10+
 - Node.js 18+
 - AWS Account (for deployment)
@@ -104,21 +105,25 @@ See [docs/bitacora.md](docs/bitacora.md) for architectural decisions and design 
 ## Development Decisions
 
 ### Audio Transfer: AudioChunks (Async)
+
 - Offline-capable
 - Reliable on poor connections
 - No real-time latency requirement
 
 ### Processing: Async Pipeline
+
 - S3 → SQS → Lambda
 - Graceful degradation (transcript always saved)
 - Configurable retries
 
 ### Voice Activation
+
 - iOS: Siri Shortcuts
 - Android: Foreground Service
 - Both trigger app and start recording
 
 ### LLM Stack
+
 - Transcription: OpenAI Whisper
 - Summarization: GPT-4 Turbo
 - Validation: Schema + Sanity checks
@@ -126,6 +131,7 @@ See [docs/bitacora.md](docs/bitacora.md) for architectural decisions and design 
 ## Deployment
 
 ### Backend (AWS Lambda)
+
 ```bash
 cd backend
 sam build
@@ -133,6 +139,7 @@ sam deploy
 ```
 
 ### Web (Vercel)
+
 ```bash
 cd web
 vercel deploy
@@ -141,12 +148,14 @@ vercel deploy
 ## Testing
 
 ### Backend
+
 ```bash
 cd backend
 pytest
 ```
 
 ### Web
+
 ```bash
 cd web
 npm test
