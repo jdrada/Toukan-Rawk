@@ -86,10 +86,10 @@ final class RecordingManager: NSObject {
 
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        // Use .record mode for optimal background recording behavior
-        // .mixWithOthers allows recording while other apps play audio
-        // .allowBluetooth enables bluetooth headset support
-        try session.setCategory(.record, mode: .voiceChat, options: [.mixWithOthers, .allowBluetoothA2DP])
+        // .playAndRecord allows recording with background audio support
+        // .defaultToSpeaker routes playback to speaker instead of receiver
+        // .allowBluetooth enables bluetooth headset support for recording
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
         try session.setActive(true)
     }
 
