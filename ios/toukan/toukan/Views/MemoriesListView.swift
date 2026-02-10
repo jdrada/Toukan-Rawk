@@ -7,8 +7,6 @@ import SwiftUI
 import SwiftData
 
 struct MemoriesListView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Recording.recordedAt, order: .reverse) private var recordings: [Recording]
     var uploadManager: UploadManager
 
     @State private var memories: [Memory] = []
@@ -18,7 +16,7 @@ struct MemoriesListView: View {
 
     var body: some View {
         Group {
-            if recordings.isEmpty && memories.isEmpty {
+            if memories.isEmpty {
                 emptyState
             } else {
                 memoriesList
@@ -37,35 +35,21 @@ struct MemoriesListView: View {
 
     private var memoriesList: some View {
         List {
-            if !recordings.isEmpty {
-                Section("Local Recordings") {
-                    ForEach(recordings) { recording in
-                        RecordingRow(recording: recording) {
-                            retryUpload(for: recording)
+            ForEach(memories) { memory in
+                MemoryRow(memory: memory)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectedMemory = memory
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task {
+                                await deleteMemory(memory)
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
-                }
-            }
-
-            if !memories.isEmpty {
-                Section("Backend Memories") {
-                    ForEach(memories) { memory in
-                        MemoryRow(memory: memory)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedMemory = memory
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    Task {
-                                        await deleteMemory(memory)
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                    }
-                }
             }
         }
         .refreshable {
@@ -77,14 +61,14 @@ struct MemoriesListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "waveform")
+            Image(systemName: "brain.head.profile")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
 
             Text("No memories yet")
                 .font(.title3.weight(.semibold))
 
-            Text("Tap the mic button or use Siri to start recording.")
+            Text("Record audio to create memories with AI-powered summaries.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -106,13 +90,6 @@ struct MemoriesListView: View {
         }
 
         isLoading = false
-    }
-
-    private func retryUpload(for recording: Recording) {
-        recording.uploadStatus = .pending
-        recording.retryCount = 0
-        try? modelContext.save()
-        uploadManager.enqueueUpload(for: recording, in: modelContext)
     }
 
     private func deleteMemory(_ memory: Memory) async {

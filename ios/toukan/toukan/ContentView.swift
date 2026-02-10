@@ -19,7 +19,13 @@ struct ContentView: View {
                 )
             }
 
-            Tab("Memories", systemImage: "list.bullet") {
+            Tab("Recordings", systemImage: "waveform") {
+                NavigationStack {
+                    RecordingsListView(uploadManager: uploadManager)
+                }
+            }
+
+            Tab("Memories", systemImage: "brain.head.profile") {
                 NavigationStack {
                     MemoriesListView(uploadManager: uploadManager)
                 }
