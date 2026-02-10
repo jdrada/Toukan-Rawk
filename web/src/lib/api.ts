@@ -49,4 +49,16 @@ export async function getMemory(id: string): Promise<MemoryResponse> {
   return fetchApi<MemoryResponse>(`/memories/${id}`);
 }
 
+export async function retryMemoryProcessing(id: string): Promise<MemoryResponse> {
+  return fetchApi<MemoryResponse>(`/process/${id}`, {
+    method: "POST",
+  });
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await fetchApi<void>(`/memories/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export { ApiError };
