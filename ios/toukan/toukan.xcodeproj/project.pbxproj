@@ -10,9 +10,22 @@
 		7D8D74502F3B89490065ADB8 /* toukan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = toukan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7D8D75842F3BDED50065ADB8 /* Exceptions for "toukan" folder in "toukan" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7D8D744F2F3B89490065ADB8 /* toukan */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7D8D74522F3B89490065ADB8 /* toukan */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7D8D75842F3BDED50065ADB8 /* Exceptions for "toukan" folder in "toukan" target */,
+			);
 			path = toukan;
 			sourceTree = "<group>";
 		};
@@ -256,6 +269,7 @@
 				DEVELOPMENT_TEAM = SFGA85M995;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = toukan/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Toukan needs access to your local network to communicate with the backend server for memory synchronization.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Toukan needs microphone access to record your meetings";
@@ -293,6 +307,7 @@
 				DEVELOPMENT_TEAM = SFGA85M995;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = toukan/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Toukan needs access to your local network to communicate with the backend server for memory synchronization.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Toukan needs microphone access to record your meetings";
