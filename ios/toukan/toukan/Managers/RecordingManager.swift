@@ -90,13 +90,14 @@ final class RecordingManager: NSObject {
     // MARK: - Audio Session
 
     private func configureAudioSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        // .record category for background recording
-        // .measurement mode prevents system from modifying audio
-        // .mixWithOthers allows other apps to play audio while recording
-        // .allowBluetooth enables bluetooth headset support
-        try session.setCategory(.record, mode: .measurement, options: [.mixWithOthers, .allowBluetooth])
-        try session.setActive(true, options: [])
+        let recordingSession = AVAudioSession.sharedInstance()
+        // .playAndRecord category is required for background recording
+        // .default mode and policy are the standard for recording
+        try recordingSession.setCategory(.playAndRecord,
+                                        mode: .default,
+                                        policy: .default,
+                                        options: [])
+        try recordingSession.setActive(true)
         print("[RecordingManager] Audio session configured and activated")
     }
 
