@@ -1,1 +1,1 @@
-app/
+"""RAWK Backend Application."""
