@@ -140,3 +140,15 @@ class MemoryService:
             status=MemoryStatus.PROCESSING,
             message="Processing re-triggered",
         )
+
+    async def delete_memory(self, memory_id: UUID) -> None:
+        """Delete a memory by ID.
+
+        Raises:
+            ResourceNotFoundError: If the memory does not exist.
+        """
+        memory = await self._repository.get_by_id(memory_id)
+        if memory is None:
+            raise ResourceNotFoundError(detail=f"Memory {memory_id} not found")
+
+        await self._repository.delete(memory_id)

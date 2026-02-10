@@ -35,3 +35,12 @@ async def get_memory(
 ) -> MemoryResponse:
     """Get a single memory by ID."""
     return await service.get_memory(memory_id)
+
+
+@router.delete("/{memory_id}", status_code=204)
+async def delete_memory(
+    memory_id: UUID,
+    service: MemoryService = Depends(get_memory_service),
+) -> None:
+    """Delete a memory by ID."""
+    await service.delete_memory(memory_id)

@@ -119,3 +119,11 @@ class MemoryRepository:
 
         await self._session.flush()
         return memory
+
+    async def delete(self, memory_id: UUID) -> None:
+        """Delete a memory by ID. Raises ResourceNotFoundError if not found."""
+        memory = await self.get_by_id(memory_id)
+        if memory is None:
+            raise ResourceNotFoundError(detail=f"Memory {memory_id} not found")
+        await self._session.delete(memory)
+        await self._session.flush()
