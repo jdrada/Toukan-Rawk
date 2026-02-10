@@ -256,6 +256,8 @@
 				DEVELOPMENT_TEAM = SFGA85M995;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Toukan needs access to your local network to communicate with the backend server for memory synchronization.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Toukan needs microphone access to record your meetings";
 				INFOPLIST_KEY_NSSiriUsageDescription = "Toukan uses Siri to start and stop recording hands-free";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -291,6 +293,8 @@
 				DEVELOPMENT_TEAM = SFGA85M995;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Toukan needs access to your local network to communicate with the backend server for memory synchronization.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Toukan needs microphone access to record your meetings";
 				INFOPLIST_KEY_NSSiriUsageDescription = "Toukan uses Siri to start and stop recording hands-free";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

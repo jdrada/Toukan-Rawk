@@ -6,67 +6,57 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
-from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from app.dependencies import get_memory_repository
-from app.repositories.memory_repository import MemoryRepository
+from app.clients.redis_client import RedisClient
+from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/events", tags=["events"])
 
 
-async def memory_status_stream(
-    repository: MemoryRepository,
-) -> AsyncGenerator[str, None]:
+async def memory_status_stream() -> AsyncGenerator[str, None]:
     """Generate Server-Sent Events for memory status updates.
 
-    Polls database every 2 seconds for memories with status 'uploading' or 'processing'.
+    Subscribes to Redis channel for real-time memory events.
     Sends keepalive events every 30 seconds.
     """
-    last_keepalive = asyncio.get_event_loop().time()
-    keepalive_interval = 30.0
-    poll_interval = 2.0
+    settings = Settings()
+    redis_client = RedisClient(settings)
 
     try:
+        # Connect and subscribe to Redis
+        await redis_client.connect()
+        pubsub = await redis_client.subscribe_to_memory_events()
+        logger.info("SSE client subscribed to Redis memory events")
+
+        last_keepalive = asyncio.get_event_loop().time()
+        keepalive_interval = 30.0
+
         while True:
             current_time = asyncio.get_event_loop().time()
 
-            # Query for active memories
+            # Try to get next event from Redis (non-blocking with 1s timeout)
             try:
-                uploading_memories, _ = await repository.list_all(
-                    page=1,
-                    page_size=100,
-                    status="uploading",
-                )
-                processing_memories, _ = await repository.list_all(
-                    page=1,
-                    page_size=100,
-                    status="processing",
-                )
+                event_data = await redis_client.get_next_event()
 
-                active_memories = uploading_memories + processing_memories
-
-                # Send event for each active memory
-                for memory in active_memories:
-                    event_data = {
-                        "memory_id": str(memory.id),
-                        "status": memory.status,
-                    }
+                if event_data:
+                    # Forward Redis event to SSE client
                     yield f"event: memory-update\n"
                     yield f"data: {json.dumps(event_data)}\n\n"
-                    logger.debug("Sent SSE update for memory %s: %s", memory.id, memory.status)
-
-                # Update keepalive timer if we sent events
-                if active_memories:
+                    logger.debug(
+                        "[Redis Sub] Forwarded event: %s (status: %s)",
+                        event_data.get("memory_id", "unknown")[:8],
+                        event_data.get("status", "unknown"),
+                    )
                     last_keepalive = current_time
 
             except Exception as e:
                 # Log error but don't break the stream
-                logger.error("Error querying memories for SSE: %s", str(e), exc_info=True)
+                logger.error("Error getting Redis event: %s", str(e), exc_info=True)
 
             # Send keepalive if needed
             if current_time - last_keepalive >= keepalive_interval:
@@ -74,34 +64,32 @@ async def memory_status_stream(
                 last_keepalive = current_time
                 logger.debug("Sent SSE keepalive")
 
-            # Wait before next poll
-            await asyncio.sleep(poll_interval)
-
     except asyncio.CancelledError:
         logger.info("SSE stream cancelled by client disconnect")
         raise
     except Exception as e:
         logger.error("Unexpected error in SSE stream: %s", str(e), exc_info=True)
         raise
+    finally:
+        # Clean up Redis connection
+        await redis_client.disconnect()
+        logger.info("SSE client disconnected from Redis")
 
 
 @router.get("/memories")
-async def stream_memory_events(
-    repository: MemoryRepository = Depends(get_memory_repository),
-) -> StreamingResponse:
+async def stream_memory_events() -> StreamingResponse:
     """Stream real-time memory status updates via Server-Sent Events.
 
-    Connects to the SSE endpoint and receives events when memories are
-    in 'uploading' or 'processing' status.
+    Connects to Redis Pub/Sub and receives events when memory status changes.
 
     Event format:
         event: memory-update
-        data: {"memory_id": "...", "status": "processing"}
+        data: {"memory_id": "...", "status": "processing", "updated_at": "..."}
 
     The stream also sends keepalive comments every 30 seconds.
     """
     return StreamingResponse(
-        memory_status_stream(repository),
+        memory_status_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

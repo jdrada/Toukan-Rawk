@@ -11,6 +11,7 @@ from collections.abc import AsyncGenerator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.redis_client import RedisClient
 from app.clients.s3 import S3Client
 from app.clients.sqs import SQSClient
 from app.config import Settings, get_settings
@@ -33,6 +34,13 @@ def get_sqs_client(
     return SQSClient(settings)
 
 
+def get_redis_client(
+    settings: Settings = Depends(get_settings),
+) -> RedisClient:
+    """Provide a RedisClient instance for pub/sub."""
+    return RedisClient(settings)
+
+
 def get_memory_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> MemoryRepository:
@@ -44,6 +52,7 @@ def get_memory_service(
     repository: MemoryRepository = Depends(get_memory_repository),
     s3_client: S3Client = Depends(get_s3_client),
     sqs_client: SQSClient = Depends(get_sqs_client),
+    redis_client: RedisClient = Depends(get_redis_client),
 ) -> MemoryService:
     """Provide a fully-wired MemoryService instance."""
-    return MemoryService(repository, s3_client, sqs_client)
+    return MemoryService(repository, s3_client, sqs_client, redis_client)

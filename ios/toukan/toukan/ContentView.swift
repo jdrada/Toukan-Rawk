@@ -19,9 +19,9 @@ struct ContentView: View {
                 )
             }
 
-            Tab("History", systemImage: "list.bullet") {
+            Tab("Memories", systemImage: "list.bullet") {
                 NavigationStack {
-                    HistoryListView(uploadManager: uploadManager)
+                    MemoriesListView(uploadManager: uploadManager)
                 }
             }
         }

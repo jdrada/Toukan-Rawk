@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # SQS
     sqs_queue_url: str = ""
 
+    # Redis
+    redis_url: str = "redis://localhost:6379"
+
     # Database
     db_host: str = "localhost"
     db_port: int = 5432

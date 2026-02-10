@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import UploadFile
 
+from app.clients.redis_client import RedisClient
 from app.clients.s3 import S3Client
 from app.clients.sqs import SQSClient
 from app.exceptions import ResourceNotFoundError, SQSPublishError
@@ -32,10 +33,30 @@ class MemoryService:
         repository: MemoryRepository,
         s3_client: S3Client,
         sqs_client: SQSClient,
+        redis_client: Optional[RedisClient] = None,
     ) -> None:
         self._repository = repository
         self._s3 = s3_client
         self._sqs = sqs_client
+        self._redis = redis_client
+
+    async def _publish_status_event(self, memory_id: UUID, status: str) -> None:
+        """Publish memory status change event to Redis.
+
+        Args:
+            memory_id: UUID of the memory.
+            status: New status value.
+        """
+        if not self._redis:
+            return
+
+        memory = await self._repository.get_by_id(memory_id)
+        if memory:
+            await self._redis.publish_memory_event(
+                memory_id=str(memory_id),
+                status=status,
+                updated_at=memory.updated_at.isoformat() if memory.updated_at else "",
+            )
 
     async def upload_audio(self, file: UploadFile) -> UploadResponse:
         """Upload audio to S3, create DB record, and enqueue processing.
@@ -63,6 +84,7 @@ class MemoryService:
         # Update memory with the S3 URL
         memory.audio_url = audio_url
         await self._repository.update_status(memory_id, MemoryStatus.PROCESSING.value)
+        await self._publish_status_event(memory_id, MemoryStatus.PROCESSING.value)
 
         # Enqueue processing job (non-fatal if it fails)
         try:
@@ -79,6 +101,7 @@ class MemoryService:
             await self._repository.update_status(
                 memory_id, MemoryStatus.UPLOADING.value
             )
+            await self._publish_status_event(memory_id, MemoryStatus.UPLOADING.value)
 
         return UploadResponse(
             memory_id=memory_id,
@@ -134,6 +157,7 @@ class MemoryService:
         await self._repository.update_status(
             memory_id, MemoryStatus.PROCESSING.value
         )
+        await self._publish_status_event(memory_id, MemoryStatus.PROCESSING.value)
 
         return UploadResponse(
             memory_id=memory_id,

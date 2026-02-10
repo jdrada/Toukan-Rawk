@@ -12,6 +12,7 @@ import logging
 import sys
 
 from app.clients.openai import OpenAIClient
+from app.clients.redis_client import RedisClient
 from app.clients.s3 import S3Client
 from app.clients.sqs import SQSClient
 from app.config import Settings
@@ -32,6 +33,8 @@ async def consume_forever(settings: Settings) -> None:
     sqs = SQSClient(settings)
     s3_client = S3Client(settings)
     openai_client = OpenAIClient(settings)
+    redis_client = RedisClient(settings)
+    await redis_client.connect()
 
     engine = _get_engine(settings)
     factory = _get_session_factory(settings)
@@ -56,7 +59,7 @@ async def consume_forever(settings: Settings) -> None:
                 async with factory() as session:
                     repository = MemoryRepository(session)
                     service = ProcessingService(
-                        repository, s3_client, openai_client
+                        repository, s3_client, openai_client, redis_client
                     )
                     await service.process_memory(
                         memory_id=payload.memory_id,

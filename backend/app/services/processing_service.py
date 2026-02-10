@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 from uuid import UUID
 
 from app.clients.openai import OpenAIClient
+from app.clients.redis_client import RedisClient
 from app.clients.s3 import S3Client
 from app.exceptions import AIProcessingError, S3UploadError
 from app.models.memory import MemoryStatus
@@ -22,10 +24,30 @@ class ProcessingService:
         repository: MemoryRepository,
         s3_client: S3Client,
         openai_client: OpenAIClient,
+        redis_client: Optional[RedisClient] = None,
     ) -> None:
         self._repository = repository
         self._s3 = s3_client
         self._openai = openai_client
+        self._redis = redis_client
+
+    async def _publish_status_event(self, memory_id: UUID, status: str) -> None:
+        """Publish memory status change event to Redis.
+
+        Args:
+            memory_id: UUID of the memory.
+            status: New status value.
+        """
+        if not self._redis:
+            return
+
+        memory = await self._repository.get_by_id(memory_id)
+        if memory:
+            await self._redis.publish_memory_event(
+                memory_id=str(memory_id),
+                status=status,
+                updated_at=memory.updated_at.isoformat() if memory.updated_at else "",
+            )
 
     async def process_memory(
         self,
@@ -57,6 +79,7 @@ class ProcessingService:
 
         # 1. Update status
         await self._repository.update_status(memory_id, MemoryStatus.PROCESSING.value)
+        await self._publish_status_event(memory_id, MemoryStatus.PROCESSING.value)
 
         # 2. Download audio from S3
         s3_key = audio_url.replace(f"s3://{self._s3._settings.s3_bucket_name}/", "")
@@ -68,6 +91,7 @@ class ProcessingService:
             await self._repository.update_status(
                 memory_id, MemoryStatus.FAILED.value
             )
+            await self._publish_status_event(memory_id, MemoryStatus.FAILED.value)
             return
 
         # 3. Transcribe with Whisper
@@ -85,6 +109,7 @@ class ProcessingService:
             await self._repository.update_status(
                 memory_id, MemoryStatus.FAILED.value
             )
+            await self._publish_status_event(memory_id, MemoryStatus.FAILED.value)
             return
 
         # 4. Analyze transcript with LLM
@@ -103,6 +128,7 @@ class ProcessingService:
                 transcript=transcription.text,
                 status=MemoryStatus.READY.value,
             )
+            await self._publish_status_event(memory_id, MemoryStatus.READY.value)
             return
 
         # 5. Save all results
@@ -115,4 +141,5 @@ class ProcessingService:
             title=analysis.title,
             status=MemoryStatus.READY.value,
         )
+        await self._publish_status_event(memory_id, MemoryStatus.READY.value)
         logger.info("Processing complete: %s", log_ctx)
