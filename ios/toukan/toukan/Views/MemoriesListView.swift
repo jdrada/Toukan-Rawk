@@ -14,6 +14,7 @@ struct MemoriesListView: View {
     @State private var memories: [Memory] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var selectedMemory: Memory?
 
     var body: some View {
         Group {
@@ -26,6 +27,9 @@ struct MemoriesListView: View {
         .navigationTitle("Memories")
         .task {
             await fetchMemories()
+        }
+        .sheet(item: $selectedMemory) { memory in
+            MemoryDetailView(memory: memory)
         }
     }
 
@@ -47,6 +51,19 @@ struct MemoriesListView: View {
                 Section("Backend Memories") {
                     ForEach(memories) { memory in
                         MemoryRow(memory: memory)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedMemory = memory
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task {
+                                        await deleteMemory(memory)
+                                    }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                 }
             }
@@ -96,6 +113,16 @@ struct MemoriesListView: View {
         recording.retryCount = 0
         try? modelContext.save()
         uploadManager.enqueueUpload(for: recording, in: modelContext)
+    }
+
+    private func deleteMemory(_ memory: Memory) async {
+        do {
+            try await MemoryAPIClient.deleteMemory(id: memory.id)
+            // Remove from local state on success
+            memories.removeAll { $0.id == memory.id }
+        } catch {
+            errorMessage = "Failed to delete memory: \(error.localizedDescription)"
+        }
     }
 }
 

@@ -107,4 +107,28 @@ enum MemoryAPIClient {
             throw MemoryAPIError.decodingFailed(error, rawResponse: rawResponse)
         }
     }
+
+    /// Deletes a memory by ID
+    static func deleteMemory(id: String) async throws {
+        let url = baseURL.appendingPathComponent("/memories/\(id)")
+
+        print("[MemoryAPIClient] Deleting memory: \(id)")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        print("[MemoryAPIClient] Delete response status code: \(httpResponse.statusCode)")
+
+        guard httpResponse.statusCode == 204 else {
+            throw MemoryAPIError.badServerResponse(statusCode: httpResponse.statusCode, body: "Failed to delete memory")
+        }
+
+        print("[MemoryAPIClient] Successfully deleted memory: \(id)")
+    }
 }
