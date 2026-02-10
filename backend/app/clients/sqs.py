@@ -39,7 +39,10 @@ class SQSClient:
         """
         queue_url = self._settings.sqs_queue_url
         try:
-            async with self._session.client("sqs") as sqs:
+            async with self._session.client(
+                "sqs",
+                endpoint_url=self._settings.aws_endpoint_url,
+            ) as sqs:
                 response = await sqs.send_message(
                     QueueUrl=queue_url,
                     MessageBody=payload.model_dump_json(),
@@ -83,7 +86,10 @@ class SQSClient:
         """
         queue_url = self._settings.sqs_queue_url
         try:
-            async with self._session.client("sqs") as sqs:
+            async with self._session.client(
+                "sqs",
+                endpoint_url=self._settings.aws_endpoint_url,
+            ) as sqs:
                 response = await sqs.receive_message(
                     QueueUrl=queue_url,
                     MaxNumberOfMessages=max_messages,
@@ -103,7 +109,10 @@ class SQSClient:
         """
         queue_url = self._settings.sqs_queue_url
         try:
-            async with self._session.client("sqs") as sqs:
+            async with self._session.client(
+                "sqs",
+                endpoint_url=self._settings.aws_endpoint_url,
+            ) as sqs:
                 await sqs.delete_message(
                     QueueUrl=queue_url,
                     ReceiptHandle=receipt_handle,

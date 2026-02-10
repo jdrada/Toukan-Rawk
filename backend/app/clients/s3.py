@@ -45,7 +45,10 @@ class S3Client:
         """
         bucket = self._settings.s3_bucket_name
         try:
-            async with self._session.client("s3") as s3:
+            async with self._session.client(
+                "s3",
+                endpoint_url=self._settings.aws_endpoint_url,
+            ) as s3:
                 await s3.put_object(
                     Bucket=bucket,
                     Key=key,
@@ -73,7 +76,10 @@ class S3Client:
         """
         bucket = self._settings.s3_bucket_name
         try:
-            async with self._session.client("s3") as s3:
+            async with self._session.client(
+                "s3",
+                endpoint_url=self._settings.aws_endpoint_url,
+            ) as s3:
                 response = await s3.get_object(Bucket=bucket, Key=key)
                 data = await response["Body"].read()
             logger.info("Downloaded s3://%s/%s (%d bytes)", bucket, key, len(data))
@@ -101,7 +107,10 @@ class S3Client:
         """
         bucket = self._settings.s3_bucket_name
         try:
-            async with self._session.client("s3") as s3:
+            async with self._session.client(
+                "s3",
+                endpoint_url=self._settings.aws_endpoint_url,
+            ) as s3:
                 url = await s3.generate_presigned_url(
                     "get_object",
                     Params={"Bucket": bucket, "Key": key},
