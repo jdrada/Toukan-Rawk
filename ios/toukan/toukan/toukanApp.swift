@@ -8,6 +8,9 @@ import SwiftData
 
 @main
 struct toukanApp: App {
+    let recordingManager = RecordingManager.shared
+    let uploadManager = UploadManager.shared
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Recording.self,
@@ -23,7 +26,15 @@ struct toukanApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(
+                recordingManager: recordingManager,
+                uploadManager: uploadManager
+            )
+            .onAppear {
+                uploadManager.configure(with: sharedModelContainer)
+                uploadManager.startMonitoring()
+                uploadManager.retryPendingUploads()
+            }
         }
         .modelContainer(sharedModelContainer)
     }

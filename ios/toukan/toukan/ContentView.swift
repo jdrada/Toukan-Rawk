@@ -7,16 +7,31 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    var recordingManager: RecordingManager
+    var uploadManager: UploadManager
+
     var body: some View {
-        NavigationStack {
-            Text("Toukan")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+        TabView {
+            Tab("Record", systemImage: "mic.fill") {
+                RecordingView(
+                    recordingManager: recordingManager,
+                    uploadManager: uploadManager
+                )
+            }
+
+            Tab("History", systemImage: "list.bullet") {
+                NavigationStack {
+                    HistoryListView(uploadManager: uploadManager)
+                }
+            }
         }
     }
 }
 
 #Preview {
-    ContentView()
-        .modelContainer(for: Recording.self, inMemory: true)
+    ContentView(
+        recordingManager: RecordingManager.shared,
+        uploadManager: UploadManager.shared
+    )
+    .modelContainer(for: Recording.self, inMemory: true)
 }
