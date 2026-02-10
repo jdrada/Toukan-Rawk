@@ -46,8 +46,36 @@ export function MemoryCard({ memory }: { memory: MemoryResponse }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteMemory(memory.id),
-    onSuccess: () => {
-      // Invalidate memories list to remove deleted item
+    onMutate: async () => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["memories"] });
+
+      // Snapshot the previous value
+      const previousMemories = queryClient.getQueryData(["memories"]);
+
+      // Optimistically remove the memory from all pages
+      queryClient.setQueriesData<any>(
+        { queryKey: ["memories"] },
+        (old: any) => {
+          if (!old) return old;
+          return {
+            ...old,
+            memories: old.memories.filter((m: MemoryResponse) => m.id !== memory.id),
+            total: old.total - 1,
+          };
+        }
+      );
+
+      return { previousMemories };
+    },
+    onError: (_err, _variables, context) => {
+      // Rollback on error
+      if (context?.previousMemories) {
+        queryClient.setQueryData(["memories"], context.previousMemories);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after mutation
       queryClient.invalidateQueries({ queryKey: ["memories"] });
     },
   });
