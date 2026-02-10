@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.exceptions import RawkException
 from app.repositories.database import dispose_engine, init_db
-from app.routers import memories, processing, upload
+from app.routers import events, memories, processing, upload
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ async def rawk_exception_handler(request: Request, exc: RawkException) -> JSONRe
 app.include_router(upload.router)
 app.include_router(memories.router)
 app.include_router(processing.router)
+app.include_router(events.router)
 
 
 @app.get("/health")
@@ -84,5 +85,6 @@ async def root() -> dict:
             "docs": "/docs",
             "upload": "/upload",
             "memories": "/memories",
+            "events": "/events/memories",
         },
     }
