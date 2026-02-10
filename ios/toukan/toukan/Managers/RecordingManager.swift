@@ -5,6 +5,7 @@
 
 import AVFoundation
 import Foundation
+import MediaPlayer
 import Observation
 
 @Observable
@@ -51,6 +52,7 @@ final class RecordingManager: NSObject {
             accumulatedTime = 0
             recordingStartTime = Date()
             startTimer()
+            updateNowPlayingInfo()
         } catch {
             print("Failed to start recording: \(error)")
         }
@@ -62,6 +64,7 @@ final class RecordingManager: NSObject {
         recorder.stop()
         stopTimer()
         deactivateAudioSession()
+        clearNowPlayingInfo()
 
         let duration = elapsedTime
         let filePath = currentFilePath ?? ""
@@ -83,8 +86,10 @@ final class RecordingManager: NSObject {
 
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
-        try session.setActive(true)
+        // Use .record mode for optimal background recording behavior
+        // .mixWithOthers allows recording while other apps play audio
+        // .allowBluetooth enables bluetooth headset support
+        try session.setCategory(.record, mode: .voiceChat, options: [.mixWithOthers, .allowBluetoothA2DP])
         try session.setActive(true)
     }
 
@@ -145,6 +150,26 @@ final class RecordingManager: NSObject {
         let minDb: Float = -60
         let normalizedLevel = max(0, (power - minDb) / (-minDb))
         audioLevel = normalizedLevel
+
+        // Update lock screen with current time
+        updateNowPlayingInfo()
+    }
+
+    // MARK: - Lock Screen / Now Playing
+
+    private func updateNowPlayingInfo() {
+        var nowPlayingInfo = [String: Any]()
+        nowPlayingInfo[MPMediaItemPropertyTitle] = "Recording in Progress"
+        nowPlayingInfo[MPMediaItemPropertyArtist] = "Toukan"
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = 0 // Unknown duration for live recording
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
+    private func clearNowPlayingInfo() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     // MARK: - Interruption Handling
