@@ -20,13 +20,14 @@ export function MemoriesList() {
     queryKey: ["memories", { page, search, status }],
     queryFn: () => getMemories({ page, page_size: PAGE_SIZE, search, status }),
     refetchInterval: (query) => {
-      // Auto-refetch every 2 seconds if there are any processing/uploading memories
+      // Auto-refetch every 3 seconds if there are any processing/uploading memories
+      // or every 10 seconds otherwise to catch new uploads
       const hasProcessingMemories = query.state.data?.items.some(
         (memory) =>
           memory.status === MemoryStatus.PROCESSING ||
           memory.status === MemoryStatus.UPLOADING
       );
-      return hasProcessingMemories ? 2000 : false;
+      return hasProcessingMemories ? 3000 : 10000;
     },
   });
 
