@@ -8,6 +8,7 @@ import SwiftUI
 struct MemoryDetailView: View {
     let memory: Memory
     @Environment(\.dismiss) private var dismiss
+    @State private var isTranscriptExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -29,15 +30,7 @@ struct MemoryDetailView: View {
                         }
                     }
 
-                    // Transcript
-                    if let transcript = memory.transcript {
-                        sectionView(title: "Transcript", icon: "text.alignleft") {
-                            Text(transcript)
-                                .font(.body)
-                        }
-                    }
-
-                    // Summary
+                    // 1. Summary (primero)
                     if let summary = memory.summary {
                         sectionView(title: "Summary", icon: "doc.text") {
                             Text(summary)
@@ -45,7 +38,7 @@ struct MemoryDetailView: View {
                         }
                     }
 
-                    // Key Points
+                    // 2. Key Points (segundo)
                     if let keyPoints = memory.keyPoints, !keyPoints.isEmpty {
                         sectionView(title: "Key Points", icon: "star") {
                             VStack(alignment: .leading, spacing: 8) {
@@ -72,6 +65,25 @@ struct MemoryDetailView: View {
                                 }
                             }
                         }
+                    }
+
+                    // 3. Transcript (último, como acordeón)
+                    if let transcript = memory.transcript {
+                        DisclosureGroup(
+                            isExpanded: $isTranscriptExpanded,
+                            content: {
+                                Text(transcript)
+                                    .font(.body)
+                                    .padding(.top, 8)
+                                    .padding(.leading, 28)
+                            },
+                            label: {
+                                Label("Transcript", systemImage: "text.alignleft")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                            }
+                        )
+                        .padding(.vertical, 8)
                     }
 
                     // Duration
