@@ -72,7 +72,9 @@ class ProcessingService:
 
         # 3. Transcribe with Whisper
         try:
-            transcription = await self._openai.transcribe_audio(audio_data)
+            # Extract filename from S3 key for format detection
+            filename = s3_key.split("/")[-1]
+            transcription = await self._openai.transcribe_audio(audio_data, filename=filename)
             logger.info(
                 "Transcription complete: %s (%d chars)",
                 log_ctx,
