@@ -7,6 +7,7 @@ import AVFoundation
 import Foundation
 import MediaPlayer
 import Observation
+import UIKit
 
 @Observable
 final class RecordingManager: NSObject {
@@ -187,6 +188,18 @@ final class RecordingManager: NSObject {
             name: AVAudioSession.routeChangeNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
     }
 
     @objc private func handleInterruption(_ notification: Notification) {
@@ -229,6 +242,25 @@ final class RecordingManager: NSObject {
             // Input device disconnected — recording continues with default mic
             try? configureAudioSession()
         }
+    }
+
+    @objc private func handleAppDidEnterBackground(_ notification: Notification) {
+        guard isRecording else { return }
+
+        // Ensure audio session stays active in background
+        try? AVAudioSession.sharedInstance().setActive(true)
+
+        // Recording continues in background thanks to audio background mode
+        print("App entered background - recording continues")
+    }
+
+    @objc private func handleAppWillEnterForeground(_ notification: Notification) {
+        guard isRecording else { return }
+
+        // Ensure audio session is still active
+        try? AVAudioSession.sharedInstance().setActive(true)
+
+        print("App entering foreground - recording continues")
     }
 }
 
