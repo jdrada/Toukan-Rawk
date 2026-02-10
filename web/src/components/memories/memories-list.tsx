@@ -6,7 +6,7 @@ import { getMemories } from "@/lib/api";
 import { MemoryCard } from "@/components/memories/memory-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/memories/pagination";
-import { MemoryStatus } from "@/types/memory";
+import { useMemoryEvents } from "@/hooks/useMemoryEvents";
 
 const PAGE_SIZE = 12;
 
@@ -16,19 +16,12 @@ export function MemoriesList() {
   const search = searchParams.get("search") || undefined;
   const status = searchParams.get("status") || undefined;
 
+  // Establish SSE connection for real-time updates
+  useMemoryEvents();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["memories", { page, search, status }],
     queryFn: () => getMemories({ page, page_size: PAGE_SIZE, search, status }),
-    refetchInterval: (query) => {
-      // Auto-refetch every 3 seconds if there are any processing/uploading memories
-      // or every 10 seconds otherwise to catch new uploads
-      const hasProcessingMemories = query.state.data?.items.some(
-        (memory) =>
-          memory.status === MemoryStatus.PROCESSING ||
-          memory.status === MemoryStatus.UPLOADING
-      );
-      return hasProcessingMemories ? 3000 : 10000;
-    },
   });
 
   if (error) {

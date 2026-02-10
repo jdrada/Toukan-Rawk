@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { MemoryStatus } from "@/types/memory";
 import { getMemory, deleteMemory, retryMemoryProcessing } from "@/lib/api";
 import { useState } from "react";
+import { useMemoryEvents } from "@/hooks/useMemoryEvents";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -45,16 +46,12 @@ export function MemoryDetailClient({ id }: MemoryDetailClientProps) {
   const queryClient = useQueryClient();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Establish SSE connection for real-time updates
+  useMemoryEvents();
+
   const { data: memory, isLoading, error } = useQuery({
     queryKey: ["memory", id],
     queryFn: () => getMemory(id),
-    refetchInterval: (query) => {
-      // Auto-refetch every 2 seconds if processing/uploading
-      const status = query.state.data?.status;
-      return status === MemoryStatus.PROCESSING || status === MemoryStatus.UPLOADING
-        ? 2000
-        : false;
-    },
   });
 
   const deleteMutation = useMutation({
