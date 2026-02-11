@@ -60,7 +60,7 @@ export function MemoryCard({ memory }: { memory: MemoryResponse }) {
           if (!old) return old;
           return {
             ...old,
-            memories: old.memories.filter((m: MemoryResponse) => m.id !== memory.id),
+            items: old.items.filter((m: MemoryResponse) => m.id !== memory.id),
             total: old.total - 1,
           };
         }
