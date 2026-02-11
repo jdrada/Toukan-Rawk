@@ -28,6 +28,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "audio" {
     id     = "expire-old-objects"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = 90
     }

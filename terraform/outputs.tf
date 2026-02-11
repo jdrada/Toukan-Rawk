@@ -1,6 +1,11 @@
 output "api_url" {
-  description = "App Runner service URL"
-  value       = "https://${aws_apprunner_service.api.service_url}"
+  description = "EC2 API public URL"
+  value       = "http://${aws_instance.api.public_ip}:8000"
+}
+
+output "api_public_ip" {
+  description = "EC2 instance public IP"
+  value       = aws_instance.api.public_ip
 }
 
 output "rds_endpoint" {
@@ -26,9 +31,4 @@ output "ecr_repo_url" {
 output "lambda_function_name" {
   description = "Lambda function name for SQS processing"
   value       = aws_lambda_function.sqs_processor.function_name
-}
-
-output "apprunner_service_arn" {
-  description = "App Runner service ARN"
-  value       = aws_apprunner_service.api.arn
 }

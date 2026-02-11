@@ -137,12 +137,21 @@ jobs:
             --function-name rawk-sqs-processor \
             --image-uri $REGISTRY/rawk-backend:$IMAGE_TAG
 
-      - name: Update App Runner service
+      - name: Update EC2 API container
         env:
           REGISTRY: ${{ needs.build-and-push.outputs.registry }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.api_image_tag }}
         run: |
-          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='rawk-api'].ServiceArn" --output text)
-          aws apprunner update-service \
-            --service-arn $SERVICE_ARN \
-            --source-configuration "ImageRepository={ImageIdentifier=$REGISTRY/rawk-backend:$IMAGE_TAG,ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=rawk-api" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $REGISTRY',
+              'docker pull $REGISTRY/rawk-backend:$IMAGE_TAG',
+              'docker stop rawk-api || true',
+              'docker rm rawk-api || true',
+              'docker run -d --name rawk-api --restart always -p 8000:8000 $(docker inspect rawk-api --format=\"{{range .Config.Env}}-e {{.}} {{end}}\" 2>/dev/null || echo \"\") $REGISTRY/rawk-backend:$IMAGE_TAG'
+            ]"

@@ -1,75 +1,106 @@
-# NOTE: VPC connector removed for free tier. App Runner uses default internet
-# egress to reach RDS (publicly accessible), S3, and SQS directly.
-# Production recommendation: use VPC connector + NAT Gateway for private RDS access.
+# EC2 instance running the FastAPI API via Docker
+# Free tier: 750 hrs/month t2.micro for 12 months
 
-resource "aws_apprunner_service" "api" {
-  service_name = "${var.app_name}-api"
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
 
-  source_configuration {
-    authentication_configuration {
-      access_role_arn = aws_iam_role.apprunner_ecr_access.arn
-    }
-
-    image_repository {
-      image_configuration {
-        port = "8000"
-
-        runtime_environment_variables = {
-          DB_HOST        = aws_db_instance.postgres.address
-          DB_PORT        = "5432"
-          DB_NAME        = "rawk_db"
-          DB_USER        = "postgres"
-          DB_PASSWORD    = var.db_password
-          S3_BUCKET_NAME = aws_s3_bucket.audio.id
-          SQS_QUEUE_URL  = aws_sqs_queue.processing.url
-          OPENAI_API_KEY = var.openai_api_key
-          REDIS_ENABLED  = "false"
-          ENVIRONMENT    = "production"
-        }
-      }
-
-      image_identifier      = "${aws_ecr_repository.backend.repository_url}:latest"
-      image_repository_type = "ECR"
-    }
-
-    auto_deployments_enabled = false
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-arm64"]
   }
 
-  instance_configuration {
-    cpu               = "1024"  # 1 vCPU
-    memory            = "2048"  # 2 GB
-    instance_role_arn = aws_iam_role.apprunner_instance.arn
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+resource "aws_security_group" "api" {
+  name        = "${var.app_name}-api-sg"
+  description = "Security group for API EC2 instance"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "HTTP API"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.main.arn
-
-  health_check_configuration {
-    protocol            = "HTTP"
-    path                = "/health"
-    interval            = 10
-    timeout             = 5
-    healthy_threshold   = 1
-    unhealthy_threshold = 5
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.app_name}-api-sg"
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_instance_profile" "api" {
+  name = "${var.app_name}-api-instance-profile"
+  role = aws_iam_role.ec2_api.name
+}
+
+resource "aws_instance" "api" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t4g.micro"  # ARM-based, free tier eligible
+  vpc_security_group_ids = [aws_security_group.api.id]
+  iam_instance_profile   = aws_iam_instance_profile.api.name
+
+  user_data = <<-EOF
+    #!/bin/bash
+    set -e
+
+    # Install Docker
+    yum update -y
+    yum install -y docker
+    systemctl start docker
+    systemctl enable docker
+
+    # Login to ECR
+    aws ecr get-login-password --region ${data.aws_region.current.name} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com
+
+    # Run the API container
+    docker run -d \
+      --name rawk-api \
+      --restart always \
+      -p 8000:8000 \
+      -e DB_HOST="${aws_db_instance.postgres.address}" \
+      -e DB_PORT="5432" \
+      -e DB_NAME="rawk_db" \
+      -e DB_USER="postgres" \
+      -e DB_PASSWORD="${var.db_password}" \
+      -e S3_BUCKET_NAME="${aws_s3_bucket.audio.id}" \
+      -e SQS_QUEUE_URL="${aws_sqs_queue.processing.url}" \
+      -e OPENAI_API_KEY="${var.openai_api_key}" \
+      -e REDIS_ENABLED="false" \
+      -e ENVIRONMENT="production" \
+      -e AWS_DEFAULT_REGION="${data.aws_region.current.name}" \
+      ${aws_ecr_repository.backend.repository_url}:api-latest
+  EOF
 
   tags = {
     Name        = "${var.app_name}-api"
     Environment = var.environment
   }
 
-  # Prevent Terraform from trying to deploy before image exists
-  lifecycle {
-    ignore_changes = [source_configuration[0].image_repository[0].image_identifier]
-  }
-}
-
-resource "aws_apprunner_auto_scaling_configuration_version" "main" {
-  auto_scaling_configuration_name = "${var.app_name}-autoscaling"
-  min_size                        = 1
-  max_size                        = 2
-
-  tags = {
-    Name        = "${var.app_name}-autoscaling"
-    Environment = var.environment
-  }
+  depends_on = [aws_db_instance.postgres]
 }

@@ -2,7 +2,7 @@ resource "aws_lambda_function" "sqs_processor" {
   function_name = "${var.app_name}-sqs-processor"
   role          = aws_iam_role.lambda_execution.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.backend.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.backend.repository_url}:lambda-latest"
 
   memory_size = 512
   timeout     = 300

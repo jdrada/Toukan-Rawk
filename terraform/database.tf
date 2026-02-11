@@ -19,9 +19,7 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.default.name
   skip_final_snapshot    = true
 
-  backup_retention_period = 7
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "mon:04:00-mon:05:00"
+  backup_retention_period = 0
 
   tags = {
     Name        = "${var.app_name}-db"

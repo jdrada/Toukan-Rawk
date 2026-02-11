@@ -18,6 +18,12 @@ web/out/
 web/.env.local
 web/.env.production.local
 
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+
 # General
 node_modules/
 .env

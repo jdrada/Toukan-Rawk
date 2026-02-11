@@ -14,8 +14,8 @@ Study notes for understanding and explaining every deployment decision in this p
                                           |
                                           v
 +------------------+           +----------+---------+           +------------------+
-|   Web App        |           |   App Runner       |           |   RDS PostgreSQL |
-|   (Next.js)      +---------->|   (FastAPI API)    +---------->|   (db.t3.micro)  |
+|   Web App        |           |   EC2 t4g.micro    |           |   RDS PostgreSQL |
+|   (Next.js)      +---------->|   (FastAPI Docker)  +---------->|   (db.t3.micro)  |
 +------------------+           +----+----------+----+           +------------------+
                                     |          |                        ^
                                     v          v                        |
@@ -42,7 +42,7 @@ Study notes for understanding and explaining every deployment decision in this p
 **How a request flows:**
 
 1. User records audio in the iOS app (or uploads via the web app).
-2. The FastAPI API running on App Runner receives the upload.
+2. The FastAPI API running on EC2 (Docker container) receives the upload.
 3. The API uploads the audio file to S3 and sends a processing job message to SQS.
 4. The API returns immediately -- the user does not wait for processing.
 5. SQS triggers the Lambda worker. Lambda downloads the audio from S3, sends it to OpenAI Whisper for transcription, then to GPT-4 for analysis.
@@ -55,7 +55,7 @@ Study notes for understanding and explaining every deployment decision in this p
 
 | Service | What it does | Free tier limit |
 |---------|-------------|-----------------|
-| **App Runner** | Runs the FastAPI API container | Free tier: 1 instance (provisional) |
+| **EC2 t4g.micro** | Runs the FastAPI API container via Docker | 750 hrs/month for 12 months |
 | **RDS PostgreSQL** | Stores users, memories, transcripts | 750 hrs/month db.t3.micro for 12 months |
 | **S3** | Stores uploaded audio files | 5 GB storage for 12 months |
 | **SQS** | Message queue for async processing jobs | 1M requests/month (forever) |
@@ -108,12 +108,12 @@ Why remote state matters:
 |------|---------|
 | `main.tf` | Terraform settings, required providers (AWS ~> 5.0), S3 backend config |
 | `variables.tf` | Input variables: `aws_region`, `db_password` (sensitive), `openai_api_key` (sensitive), `environment`, `app_name` |
-| `network.tf` | Default VPC lookup, security groups for RDS (port 5432 from VPC only) and App Runner |
+| `network.tf` | Default VPC lookup, security groups for RDS (port 5432 from VPC only) and EC2 API |
 | `ecr.tf` | ECR repository for Docker images, lifecycle policy to keep only last 5 images |
-| `database.tf` | RDS PostgreSQL 16, db.t3.micro, not publicly accessible, 7-day backups |
+| `database.tf` | RDS PostgreSQL 16, db.t3.micro, publicly accessible (free tier trade-off), no backups (free tier restriction) |
 | `s3.tf` | S3 bucket for audio, public access blocked, 90-day expiration lifecycle |
 | `sqs.tf` | SQS processing queue with DLQ (3 retries, 14-day retention on DLQ) |
-| `iam.tf` | IAM roles: Lambda execution role, App Runner instance role, App Runner ECR access role -- all with least-privilege policies |
+| `iam.tf` | IAM roles: Lambda execution role (SQS + S3 + logs), EC2 API role (S3 + SQS + ECR) -- all with least-privilege policies |
 | `lambda.tf` | Lambda function (container image), SQS event source mapping (batch size 1) |
 
 ---
@@ -145,7 +145,7 @@ The pipeline lives in `.github/workflows/ci-cd.yml` and has three stages:
 - **What it does**:
   1. Runs `terraform init` and `terraform apply -auto-approve`.
   2. Updates the Lambda function to the new image.
-  3. Updates the App Runner service to the new image.
+  3. Deploys the new API image to the EC2 instance.
 
 ### Why manual approval matters
 
@@ -161,7 +161,7 @@ Instead of storing long-lived AWS access keys as GitHub Secrets (which could lea
 
 ### Why Docker?
 
-"It works on my machine" stops being a problem. The same container that runs locally runs identically on App Runner and Lambda. No environment mismatches.
+"It works on my machine" stops being a problem. The same container that runs locally runs identically on EC2 and Lambda. No environment mismatches.
 
 ### Multi-stage builds (API Dockerfile)
 
@@ -185,7 +185,7 @@ Why two stages? The first stage installs all build tools and compiles dependenci
 
 | Image | Dockerfile | Purpose |
 |-------|-----------|---------|
-| API | `backend/Dockerfile` | Runs `uvicorn` (FastAPI) on App Runner |
+| API | `backend/Dockerfile` | Runs `uvicorn` (FastAPI) on EC2 via Docker |
 | Lambda worker | `backend/Dockerfile.lambda` | Based on AWS Lambda Python runtime, runs the SQS handler |
 
 They share the same `app/` code and `requirements.prod.txt`, so the business logic is identical.
@@ -198,15 +198,15 @@ The local macOS system Python is 3.9.6. But in production, we control the runtim
 
 ## 6. Design Decisions & Trade-offs
 
-### App Runner over ECS Fargate
+### EC2 over App Runner / ECS Fargate
 
-**Decision**: Use App Runner to run the API container.
+**Decision**: Use EC2 t4g.micro (ARM) running Docker to host the API.
 
-**Why**: App Runner is simpler. You give it a container image and it handles load balancing, auto-scaling, TLS certificates, and health checks automatically. With ECS Fargate, you would need to configure an ALB, target groups, task definitions, and service definitions yourself -- that is a lot more Terraform.
+**Why**: App Runner requires a subscription that free-tier-only AWS accounts don't have. ECS Fargate requires an ALB, target groups, task definitions -- too much configuration for a demo. EC2 t4g.micro is free tier eligible (750 hrs/month), and we simply run Docker on it with a user_data startup script.
 
-**Trade-off**: Less control over networking. App Runner VPC egress requires a NAT Gateway (~$30/month) for private RDS access. For free tier, we make RDS publicly accessible with security group restrictions instead. In production, you would add a VPC connector + NAT Gateway.
+**Trade-off**: No auto-scaling, no built-in TLS, no managed load balancing. For a demo project with one user, this is perfectly fine. In production, you would use App Runner or ECS Fargate with an ALB.
 
-**Why it is worth it**: For a small project, the simplicity wins. And App Runner has free tier pricing.
+**Why it is worth it**: Zero cost, simple setup, and the Docker container is identical to what would run on any managed service.
 
 ### No Redis in production
 
@@ -265,10 +265,9 @@ The local macOS system Python is 3.9.6. But in production, we control the runtim
 Each service only has the permissions it needs. Look at `iam.tf`:
 
 - **Lambda** can: read from SQS, read from S3, write CloudWatch logs. That is it.
-- **App Runner** can: write to S3 (upload audio), send messages to SQS. That is it.
-- **App Runner ECR access** can: pull images from ECR. That is it.
+- **EC2 API** can: write to S3 (upload audio), send messages to SQS, pull ECR images. That is it.
 
-If Lambda is compromised, the attacker cannot write to S3 or send SQS messages. If App Runner is compromised, the attacker cannot read from SQS or invoke Lambda.
+If Lambda is compromised, the attacker cannot write to S3 or send SQS messages. If the EC2 instance is compromised, the attacker cannot read from SQS or invoke Lambda.
 
 ### No hardcoded secrets
 
@@ -285,9 +284,9 @@ GitHub Actions authenticates to AWS without long-lived access keys. The pipeline
 
 ### RDS access trade-off
 
-In this free-tier setup, RDS is publicly accessible (with security group restrictions) because App Runner VPC egress requires a NAT Gateway (~$30/month). The security group restricts port 5432 to the VPC CIDR block.
+In this free-tier setup, RDS is publicly accessible (with security group restrictions) to avoid the cost of NAT Gateway (~$30/month). The security group restricts port 5432 to the VPC CIDR block.
 
-**Production recommendation**: Use a VPC connector + NAT Gateway so RDS can be fully private (`publicly_accessible = false`). This costs more but eliminates any public database exposure.
+**Production recommendation**: Place RDS in a private subnet with `publicly_accessible = false` and use a NAT Gateway for outbound internet access. This costs more but eliminates any public database exposure.
 
 ### S3 block public access
 
@@ -298,7 +297,7 @@ ignore_public_acls      = true
 restrict_public_buckets = true
 ```
 
-All four public access blocks are enabled. Audio files are never exposed to the internet. Only the App Runner and Lambda roles (via IAM) can read/write objects.
+All four public access blocks are enabled. Audio files are never exposed to the internet. Only the EC2 and Lambda roles (via IAM) can read/write objects.
 
 ---
 
@@ -310,7 +309,7 @@ Things to say confidently:
 
 - "The CI/CD pipeline has a **manual approval gate** because deploying to production should be a deliberate human decision. Tests pass automatically, images build automatically, but someone has to approve the actual deploy."
 
-- "I chose **App Runner over ECS Fargate** because it handles load balancing, auto-scaling, and TLS out of the box with minimal configuration. For a small project, the reduced operational complexity is worth the trade-off of less networking control."
+- "I used **EC2 with Docker** for the API because App Runner was not available on my free-tier account and ECS Fargate requires too much configuration for a demo. The Docker container is portable -- switching to App Runner or ECS in production is just a Terraform change."
 
 - "**Lambda is ideal for the worker** because it is event-driven (triggered by SQS), scales to zero when idle, and you only pay per invocation. There is no reason to keep a container running 24/7 waiting for occasional processing jobs."
 
@@ -324,7 +323,7 @@ Things to say confidently:
 
 - "I use **OIDC authentication** for CI/CD instead of long-lived AWS access keys. This eliminates the risk of credential leaks from the GitHub repository."
 
-- "Every service follows **least-privilege IAM**. Lambda can only read from S3 and SQS. App Runner can only write to S3 and send to SQS. If one service is compromised, the blast radius is limited."
+- "Every service follows **least-privilege IAM**. Lambda can only read from S3 and SQS. The EC2 API can only write to S3 and send to SQS. If one service is compromised, the blast radius is limited."
 
 ---
 
@@ -334,7 +333,7 @@ Things to say confidently:
 
 | Service | Cost |
 |---------|------|
-| App Runner | Free tier (1 instance) |
+| EC2 t4g.micro | Free (750 hrs/month) |
 | RDS db.t3.micro | Free (750 hrs/month) |
 | S3 | Free (under 5 GB) |
 | SQS | Free (under 1M requests) |
@@ -347,11 +346,11 @@ Things to say confidently:
 |---------|---------------|
 | RDS db.t3.micro | ~$13/month |
 | S3 (a few GB) | ~$0.10/month |
-| App Runner | Still free tier |
+| EC2 t4g.micro | ~$8/month |
 | SQS | Still free (forever) |
 | Lambda | Still free (forever) |
 | ECR | Still free (forever) |
-| **Total** | **~$13-15/month** |
+| **Total** | **~$21-23/month** |
 
 ### How to tear down everything
 
@@ -432,8 +431,8 @@ docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/rawk-backend:api-latest
 ### Useful AWS CLI commands
 
 ```bash
-# Check App Runner service status
-aws apprunner list-services
+# Check EC2 instance status
+aws ec2 describe-instances --filters "Name=tag:Name,Values=rawk-api" --query "Reservations[].Instances[].{ID:InstanceId,State:State.Name,IP:PublicIpAddress}"
 
 # Check Lambda function
 aws lambda get-function --function-name rawk-sqs-processor
