@@ -4,6 +4,12 @@ resource "aws_lambda_function" "sqs_processor" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.backend.repository_url}:lambda-latest"
 
+  architectures = ["arm64"]
+
+  image_config {
+    command = ["app.workers.sqs_handler.handler"]
+  }
+
   memory_size = 512
   timeout     = 300
 

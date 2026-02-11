@@ -1,6 +1,6 @@
 import { MemoryListResponse, MemoryResponse } from "@/types/memory";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 class ApiError extends Error {
   constructor(

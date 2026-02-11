@@ -11,12 +11,25 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		7D8D74522F3B89490065ADB8 /* toukan */ = {
+		7D8D74522F3B89490065ADB8 /* Memories */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = toukan;
+			exceptions = (
+				7D8D74602F3B89490065ADB8 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			path = Memories;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7D8D74602F3B89490065ADB8 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7D8D744F2F3B89490065ADB8 /* Memories */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		7D8D744D2F3B89490065ADB8 /* Frameworks */ = {
@@ -32,7 +45,7 @@
 		7D8D74472F3B89490065ADB8 = {
 			isa = PBXGroup;
 			children = (
-				7D8D74522F3B89490065ADB8 /* toukan */,
+				7D8D74522F3B89490065ADB8 /* Memories */,
 				7D8D74512F3B89490065ADB8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,7 +74,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				7D8D74522F3B89490065ADB8 /* toukan */,
+				7D8D74522F3B89490065ADB8 /* Memories */,
 			);
 			name = Memories;
 			packageProductDependencies = (
@@ -256,7 +269,7 @@
 				DEVELOPMENT_TEAM = SFGA85M995;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = toukan/Info.plist;
+				INFOPLIST_FILE = Memories/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Toukan needs access to your local network to communicate with the backend server for memory synchronization.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Toukan needs microphone access to record your meetings";
@@ -294,7 +307,7 @@
 				DEVELOPMENT_TEAM = SFGA85M995;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = toukan/Info.plist;
+				INFOPLIST_FILE = Memories/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Toukan needs access to your local network to communicate with the backend server for memory synchronization.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Toukan needs microphone access to record your meetings";

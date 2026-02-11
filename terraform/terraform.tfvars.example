@@ -1,4 +1,4 @@
-aws_region     = "us-east-1"
-db_password    = "change-me-to-a-strong-password"
-openai_api_key = "sk-..."
+aws_region     = ""
+db_password    = ""
+openai_api_key = ""
 environment    = "production"

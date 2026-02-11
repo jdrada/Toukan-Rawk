@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    aws_session_token: str = ""
     aws_endpoint_url: Optional[str] = None  # For LocalStack
 
     # S3

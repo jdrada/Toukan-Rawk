@@ -18,11 +18,14 @@ class S3Client:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._session = aioboto3.Session(
-            aws_access_key_id=settings.aws_access_key_id or None,
-            aws_secret_access_key=settings.aws_secret_access_key or None,
-            region_name=settings.aws_region,
-        )
+        session_kwargs: dict = {"region_name": settings.aws_region}
+        if settings.aws_access_key_id:
+            session_kwargs["aws_access_key_id"] = settings.aws_access_key_id
+        if settings.aws_secret_access_key:
+            session_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+        if settings.aws_session_token:
+            session_kwargs["aws_session_token"] = settings.aws_session_token
+        self._session = aioboto3.Session(**session_kwargs)
 
     async def upload_file(
         self,

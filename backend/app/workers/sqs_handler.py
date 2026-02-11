@@ -17,7 +17,7 @@ from app.clients.redis_client import NullRedisClient, RedisClient
 from app.clients.s3 import S3Client
 from app.config import Settings
 from app.models.memory import MemoryProcessRequest
-from app.repositories.database import _get_session_factory, _get_engine
+from app.repositories.database import _get_session_factory, _get_engine, dispose_engine
 from app.repositories.memory_repository import MemoryRepository
 from app.services.processing_service import ProcessingService
 
@@ -39,6 +39,7 @@ async def _process_record(record: Dict[str, Any]) -> None:
     )
 
     settings = Settings()
+
     s3_client = S3Client(settings)
     openai_client = OpenAIClient(settings)
     if settings.redis_enabled:
@@ -61,6 +62,8 @@ async def _process_record(record: Dict[str, Any]) -> None:
         )
         await session.commit()
 
+    await dispose_engine()
+
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, List]:
     """AWS Lambda entry point for SQS events.
@@ -75,12 +78,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, List]:
     Returns:
         Dict with "batchItemFailures" for failed records.
     """
-    loop = asyncio.new_event_loop()
     failures: List[Dict[str, str]] = []
 
     for record in event.get("Records", []):
         try:
-            loop.run_until_complete(_process_record(record))
+            asyncio.run(_process_record(record))
         except Exception as exc:
             message_id = record.get("messageId", "unknown")
             logger.error(
@@ -90,8 +92,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, List]:
                 exc_info=True,
             )
             failures.append({"itemIdentifier": message_id})
-
-    loop.close()
 
     if failures:
         logger.warning("Batch had %d failures out of %d records",
