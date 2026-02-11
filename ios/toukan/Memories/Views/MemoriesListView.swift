@@ -14,6 +14,7 @@ struct MemoriesListView: View {
     @State private var errorMessage: String?
     @State private var selectedMemory: Memory?
     @State private var pollTimer: Timer?
+    @State private var isFetching = false
 
     private var hasPendingMemories: Bool {
         memories.contains { $0.status == .uploading || $0.status == .processing }
@@ -93,9 +94,10 @@ struct MemoriesListView: View {
 
     private func startPolling() {
         stopPolling()
-        let interval: TimeInterval = hasPendingMemories ? 1.0 : 10.0
+        let interval: TimeInterval = hasPendingMemories ? 3.0 : 10.0
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             Task {
+                guard !isFetching else { return }
                 await fetchMemories()
             }
         }
@@ -109,6 +111,8 @@ struct MemoriesListView: View {
     // MARK: - Actions
 
     private func fetchMemories() async {
+        isFetching = true
+        defer { isFetching = false }
         do {
             let response = try await MemoryAPIClient.fetchMemories()
             memories = response.items

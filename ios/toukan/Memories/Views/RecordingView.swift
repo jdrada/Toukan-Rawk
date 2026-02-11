@@ -13,6 +13,7 @@ struct RecordingView: View {
 
     @State private var processingState: ProcessingState?
     @State private var pollTimer: Timer?
+    @State private var isPolling = false
 
     var body: some View {
         ZStack {
@@ -191,8 +192,11 @@ struct RecordingView: View {
 
     private func startPolling(recordingId: UUID) {
         stopPolling()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
             Task { @MainActor in
+                guard !isPolling else { return }
+                isPolling = true
+                defer { isPolling = false }
                 await pollStatus(recordingId: recordingId)
             }
         }
