@@ -51,7 +51,7 @@ export function MemoryDetailClient({ id }: MemoryDetailClientProps) {
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       if (status === MemoryStatus.UPLOADING || status === MemoryStatus.PROCESSING) {
-        return 3_000;
+        return 1_000;
       }
       return false;
     },

@@ -9,8 +9,8 @@ import { Pagination } from "@/components/memories/pagination";
 import { MemoryStatus } from "@/types/memory";
 
 const PAGE_SIZE = 12;
-const SLOW_POLL = 10_000;
-const FAST_POLL = 3_000;
+const SLOW_POLL = 1_000;
+const FAST_POLL = 1_000;
 
 export function MemoriesList() {
   const searchParams = useSearchParams();

@@ -1,6 +1,6 @@
-# RAWK - Memory Processing System
+# Memories
 
-Transform conversations into actionable memories using AI.
+Record your meetings, transcribe them with AI, and get summaries, key points, and action items.
 
 ## Quick Start
 
@@ -35,115 +35,58 @@ npm run dev
 
 Web runs on: `http://localhost:3000`
 
-## Architecture
+### iOS App
 
-```
-┌─────────────────┐
-│   Mobile App    │  (iOS/Android)
-│  (Siri/Wake)    │
-└────────┬────────┘
-         │ Audio Upload (S3)
-         ▼
-┌─────────────────┐
-│  API Gateway    │
-│  (Lambda)       │
-└────────┬────────┘
-         │
-    ┌────┴────────────────┐
-    │                     │
-    ▼                     ▼
-┌─────────┐         ┌──────────┐
-│  RDS    │         │   SQS    │
-│  (DB)   │         │ (Queue)  │
-└─────────┘         └────┬─────┘
-                         │
-                         ▼
-                  ┌────────────────┐
-                  │ Lambda Worker  │
-                  │ (Whisper+GPT4) │
-                  └────────────────┘
+Open `ios/toukan/Memories.xcodeproj` in Xcode and run on a device or simulator.
 
-   ▼
+## How It Works
 
-┌─────────────────┐
-│   Next.js Web   │
-│  (Vercel)       │
-└─────────────────┘
-```
-
-## Folder Structure
-
-```
-rawk/
-├── backend/              (Python + FastAPI)
-│   ├── app/
-│   │   ├── main.py       (FastAPI app)
-│   │   ├── handlers/     (API routes)
-│   │   ├── services/     (Business logic)
-│   │   ├── models/       (DB models)
-│   │   └── utils/        (Utilities)
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── README.md
-│
-├── web/                  (Next.js)
-│   ├── src/
-│   ├── package.json
-│   ├── .env.example
-│   └── README.md
-│
-├── docs/
-│   └── bitacora.md      (Decision log)
-│
-└── README.md            (This file)
-```
-
-## Documentation
-
-See [docs/bitacora.md](docs/bitacora.md) for architectural decisions and design rationale.
+1. Record a meeting on the iOS app
+2. Audio gets uploaded to S3
+3. SQS queues the file for processing
+4. Lambda worker transcribes with Whisper and summarizes with GPT-4
+5. Results show up on the web dashboard with polling
 
 ## Development Decisions
 
-### Audio Transfer: AudioChunks (Async)
+### Audio Upload
 
-- Offline-capable
-- Reliable on poor connections
-- No real-time latency requirement
+- Background upload so the app doesn't need to stay open
+- Automatic retry on failure
+- Works offline (queues locally until connection is back)
 
-### Processing: Async Pipeline
+### Processing Pipeline
 
-- S3 → SQS → Lambda
-- Graceful degradation (transcript always saved)
-- Configurable retries
+- S3 -> SQS -> Lambda
+- Transcript is always saved even if summarization fails
+- Retries up to 3 times with a dead letter queue
 
-### Voice Activation
-
-- iOS: Siri Shortcuts
-- Android: Foreground Service
-- Both trigger app and start recording
-
-### LLM Stack
+### AI Stack
 
 - Transcription: OpenAI Whisper
 - Summarization: GPT-4 Turbo
-- Validation: Schema + Sanity checks
+- Extracts: title, summary, key points, action items
 
 ## Deployment
 
-### Backend (AWS Lambda)
+### Backend (AWS)
+
+Infrastructure managed with Terraform. CI/CD with GitHub Actions.
 
 ```bash
-cd backend
-sam build
-sam deploy
+cd terraform
+terraform init
+terraform apply
 ```
 
 ### Web (Vercel)
 
 ```bash
 cd web
-vercel deploy
+vercel --prod
 ```
+
+Auto-deploys on push to main.
 
 ## Testing
 
@@ -151,14 +94,17 @@ vercel deploy
 
 ```bash
 cd backend
+source venv/bin/activate
 pytest
 ```
+
+45 tests covering models, config, repository, services, processing, and API endpoints.
 
 ### Web
 
 ```bash
 cd web
-npm test
+npm run build
 ```
 
 ## License
