@@ -13,6 +13,25 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 
+class NullRedisClient:
+    """No-op Redis client for environments without Redis (e.g. production on AWS Free Tier)."""
+
+    async def connect(self) -> None:
+        pass
+
+    async def disconnect(self) -> None:
+        pass
+
+    async def publish_memory_event(self, memory_id: str, status: str, updated_at: str) -> None:
+        logger.debug("Redis disabled, skipping event publish for %s", memory_id[:8])
+
+    async def subscribe_to_memory_events(self) -> None:
+        raise RuntimeError("Redis is disabled in this environment")
+
+    async def get_next_event(self) -> Optional[Dict[str, Any]]:
+        raise RuntimeError("Redis is disabled in this environment")
+
+
 class RedisClient:
     """Redis client for publishing and subscribing to memory events."""
 

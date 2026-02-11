@@ -1,0 +1,5 @@
+FROM public.ecr.aws/lambda/python:3.11
+COPY requirements.prod.txt .
+RUN pip install --no-cache-dir -r requirements.prod.txt
+COPY app/ ${LAMBDA_TASK_ROOT}/app/
+CMD ["app.workers.sqs_handler.handler"]

@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 from uuid import UUID
 
 from app.clients.openai import OpenAIClient
-from app.clients.redis_client import RedisClient
+from app.clients.redis_client import NullRedisClient, RedisClient
 from app.clients.s3 import S3Client
 from app.config import Settings
 from app.models.memory import MemoryProcessRequest
@@ -41,8 +41,11 @@ async def _process_record(record: Dict[str, Any]) -> None:
     settings = Settings()
     s3_client = S3Client(settings)
     openai_client = OpenAIClient(settings)
-    redis_client = RedisClient(settings)
-    await redis_client.connect()
+    if settings.redis_enabled:
+        redis_client = RedisClient(settings)
+        await redis_client.connect()
+    else:
+        redis_client = NullRedisClient()
 
     engine = _get_engine(settings)
     factory = _get_session_factory(settings)

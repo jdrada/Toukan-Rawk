@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients.redis_client import RedisClient
+from app.clients.redis_client import NullRedisClient, RedisClient
 from app.clients.s3 import S3Client
 from app.clients.sqs import SQSClient
 from app.config import Settings, get_settings
@@ -37,7 +37,9 @@ def get_sqs_client(
 def get_redis_client(
     settings: Settings = Depends(get_settings),
 ) -> RedisClient:
-    """Provide a RedisClient instance for pub/sub."""
+    """Provide a RedisClient or NullRedisClient based on settings."""
+    if not settings.redis_enabled:
+        return NullRedisClient()
     return RedisClient(settings)
 
 

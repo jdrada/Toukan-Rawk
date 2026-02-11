@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379"
+    redis_enabled: bool = True
 
     # Database
     db_host: str = "localhost"

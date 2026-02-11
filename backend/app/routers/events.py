@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.clients.redis_client import RedisClient
 from app.config import Settings
@@ -88,6 +88,12 @@ async def stream_memory_events() -> StreamingResponse:
 
     The stream also sends keepalive comments every 30 seconds.
     """
+    settings = Settings()
+    if not settings.redis_enabled:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Real-time events not available. Use polling instead."},
+        )
     return StreamingResponse(
         memory_status_stream(),
         media_type="text/event-stream",

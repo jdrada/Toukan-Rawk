@@ -1,0 +1,148 @@
+name: CI/CD Pipeline
+
+# Secrets required in GitHub repository settings:
+# - AWS_DEPLOY_ROLE_ARN: ARN of the IAM role for OIDC authentication
+# - OPENAI_API_KEY: OpenAI API key for the application
+# - DB_PASSWORD: RDS PostgreSQL password
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'terraform/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'terraform/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run tests
+        run: cd backend && python -m pytest -v
+
+  build-and-push:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      registry: ${{ steps.login-ecr.outputs.registry }}
+      api_image_tag: ${{ steps.image-tags.outputs.api_image_tag }}
+      lambda_image_tag: ${{ steps.image-tags.outputs.lambda_image_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tags
+        id: image-tags
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "api_image_tag=api-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "lambda_image_tag=lambda-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Build and push API image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: rawk-backend
+          IMAGE_TAG: ${{ steps.image-tags.outputs.api_image_tag }}
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -f backend/Dockerfile backend/
+          docker tag $REGISTRY/$REPOSITORY:$IMAGE_TAG $REGISTRY/$REPOSITORY:api-latest
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:api-latest
+
+      - name: Build and push Lambda image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: rawk-backend
+          IMAGE_TAG: ${{ steps.image-tags.outputs.lambda_image_tag }}
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -f backend/Dockerfile.lambda backend/
+          docker tag $REGISTRY/$REPOSITORY:$IMAGE_TAG $REGISTRY/$REPOSITORY:lambda-latest
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:lambda-latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: terraform
+        env:
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        run: terraform apply -auto-approve
+
+      - name: Update Lambda function code
+        env:
+          REGISTRY: ${{ needs.build-and-push.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.lambda_image_tag }}
+        run: |
+          aws lambda update-function-code \
+            --function-name rawk-sqs-processor \
+            --image-uri $REGISTRY/rawk-backend:$IMAGE_TAG
+
+      - name: Update App Runner service
+        env:
+          REGISTRY: ${{ needs.build-and-push.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.api_image_tag }}
+        run: |
+          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='rawk-api'].ServiceArn" --output text)
+          aws apprunner update-service \
+            --service-arn $SERVICE_ARN \
+            --source-configuration "ImageRepository={ImageIdentifier=$REGISTRY/rawk-backend:$IMAGE_TAG,ImageRepositoryType=ECR,ImageConfiguration={Port=8000}}"
