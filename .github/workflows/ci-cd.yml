@@ -174,13 +174,18 @@ jobs:
           INSTANCE_ID=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=rawk-api" "Name=instance-state-name,Values=running" \
             --query "Reservations[0].Instances[0].InstanceId" --output text)
+
+          # Write env file, pull image, restart container
           aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[
-              'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $REGISTRY',
-              'docker pull $REGISTRY/rawk-backend:$IMAGE_TAG',
-              'docker stop rawk-api || true',
-              'docker rm rawk-api || true',
-              'docker run -d --name rawk-api --restart always -p 8000:8000 $(docker inspect rawk-api --format=\"{{range .Config.Env}}-e {{.}} {{end}}\" 2>/dev/null || echo \"\") $REGISTRY/rawk-backend:$IMAGE_TAG'
+            --parameters commands="[
+              \"set -e\",
+              \"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $REGISTRY\",
+              \"docker pull $REGISTRY/rawk-backend:$IMAGE_TAG\",
+              \"aws ssm get-parameter --name /rawk/api/env --with-decryption --query Parameter.Value --output text --region us-east-1 | python3 -c 'import json,sys;d=json.load(sys.stdin);[print(k+chr(61)+v) for k,v in d.items()]' > /tmp/rawk-api.env\",
+              \"docker stop rawk-api || true\",
+              \"docker rm rawk-api || true\",
+              \"docker run -d --name rawk-api --restart always -p 8000:8000 --env-file /tmp/rawk-api.env $REGISTRY/rawk-backend:$IMAGE_TAG\",
+              \"rm -f /tmp/rawk-api.env\"
             ]"

@@ -217,6 +217,21 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
         Resource = "*"
       },
       {
+        Sid    = "SSMParams"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:PutParameter",
+          "ssm:DeleteParameter",
+          "ssm:DescribeParameters",
+          "ssm:AddTagsToResource",
+          "ssm:ListTagsForResource",
+          "ssm:RemoveTagsFromResource"
+        ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.app_name}/*"
+      },
+      {
         Sid    = "STS"
         Effect = "Allow"
         Action = ["sts:GetCallerIdentity"]

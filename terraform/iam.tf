@@ -121,6 +121,13 @@ resource "aws_iam_role_policy" "ec2_api_permissions" {
           "ecr:GetDownloadUrlForLayer"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.app_name}/*"
       }
     ]
   })
