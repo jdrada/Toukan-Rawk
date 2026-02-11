@@ -11,7 +11,8 @@ struct RecordingView: View {
     var recordingManager: RecordingManager
     var uploadManager: UploadManager
 
-    @State private var showSavedConfirmation = false
+    @State private var processingState: ProcessingState?
+    @State private var pollTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -31,8 +32,20 @@ struct RecordingView: View {
             }
             .padding()
 
-            if showSavedConfirmation {
-                savedOverlay
+            // Top notification banner
+            VStack {
+                if let state = processingState {
+                    ProcessingBanner(state: state) {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            processingState = nil
+                            stopPolling()
+                        }
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                }
+                Spacer()
             }
         }
     }
@@ -89,6 +102,7 @@ struct RecordingView: View {
                     .foregroundStyle(.orange)
             }
 
+            // Stop button
             Button(action: stopRecording) {
                 HStack(spacing: 10) {
                     Image(systemName: "stop.fill")
@@ -103,22 +117,15 @@ struct RecordingView: View {
                 .shadow(color: .red.opacity(0.3), radius: 8, y: 4)
             }
             .accessibilityLabel("Stop Recording")
-        }
-    }
 
-    // MARK: - Saved Confirmation
-
-    private var savedOverlay: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.green)
-            Text("Recording saved")
-                .font(.title3.weight(.semibold))
+            // Cancel button
+            Button(action: cancelRecording) {
+                Text("Cancel")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("Cancel Recording")
         }
-        .padding(40)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .transition(.scale.combined(with: .opacity))
     }
 
     // MARK: - Background
@@ -140,6 +147,10 @@ struct RecordingView: View {
         recordingManager.startRecording()
     }
 
+    private func cancelRecording() {
+        recordingManager.cancelRecording()
+    }
+
     private func stopRecording() {
         guard let result = recordingManager.stopRecording() else { return }
 
@@ -153,13 +164,114 @@ struct RecordingView: View {
         uploadManager.enqueueUpload(for: recording, in: modelContext)
 
         withAnimation(.spring(duration: 0.4)) {
-            showSavedConfirmation = true
+            processingState = ProcessingState(
+                recordingId: recording.id,
+                step: .saved
+            )
         }
+
+        // Start advancing through steps
+        startProgressTracking(recordingId: recording.id)
+    }
+
+    // MARK: - Progress Tracking
+
+    private func startProgressTracking(recordingId: UUID) {
+        // After a brief "Saved!" moment, start polling for status
         Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            withAnimation(.easeOut(duration: 0.3)) {
-                showSavedConfirmation = false
+            try? await Task.sleep(for: .seconds(1.0))
+            await MainActor.run {
+                withAnimation {
+                    processingState?.step = .uploading
+                }
+                startPolling(recordingId: recordingId)
             }
+        }
+    }
+
+    private func startPolling(recordingId: UUID) {
+        stopPolling()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in
+                await pollStatus(recordingId: recordingId)
+            }
+        }
+    }
+
+    private func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
+    @MainActor
+    private func pollStatus(recordingId: UUID) async {
+        // Check local upload status first
+        let context = modelContext
+        let predicate = #Predicate<Recording> { $0.id == recordingId }
+        let descriptor = FetchDescriptor<Recording>(predicate: predicate)
+
+        guard let recording = try? context.fetch(descriptor).first else { return }
+
+        switch recording.uploadStatus {
+        case .pending, .uploading:
+            withAnimation {
+                processingState?.step = .uploading
+            }
+        case .failed:
+            withAnimation {
+                processingState?.step = .failed
+            }
+            stopPolling()
+            // Auto-dismiss after 3s
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                withAnimation(.easeOut(duration: 0.3)) {
+                    processingState = nil
+                }
+            }
+        case .uploaded:
+            // Upload done, now poll the API for memory processing status
+            await pollMemoryStatus()
+        }
+    }
+
+    @MainActor
+    private func pollMemoryStatus() async {
+        do {
+            let response = try await MemoryAPIClient.fetchMemories(page: 1, pageSize: 1)
+            guard let latest = response.items.first else { return }
+
+            switch latest.status {
+            case .uploading, .processing:
+                withAnimation {
+                    processingState?.step = .processing
+                }
+            case .ready:
+                withAnimation {
+                    processingState?.step = .ready
+                }
+                stopPolling()
+                // Auto-dismiss after 2s
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        processingState = nil
+                    }
+                }
+            case .failed:
+                withAnimation {
+                    processingState?.step = .failed
+                }
+                stopPolling()
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        processingState = nil
+                    }
+                }
+            }
+        } catch {
+            // Keep polling on network errors
         }
     }
 
@@ -170,6 +282,115 @@ struct RecordingView: View {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+}
+
+// MARK: - Processing State
+
+struct ProcessingState {
+    let recordingId: UUID
+    var step: Step
+
+    enum Step {
+        case saved
+        case uploading
+        case processing
+        case ready
+        case failed
+    }
+}
+
+// MARK: - Processing Banner
+
+struct ProcessingBanner: View {
+    let state: ProcessingState
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(iconColor)
+                    .frame(width: 36, height: 36)
+
+                if state.step == .uploading || state.step == .processing {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: iconName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            // Text
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // Dismiss button for terminal states
+            if state.step == .ready || state.step == .failed {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .background(.secondary.opacity(0.1), in: Circle())
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+    }
+
+    private var iconName: String {
+        switch state.step {
+        case .saved: return "checkmark"
+        case .uploading: return "arrow.up"
+        case .processing: return "brain"
+        case .ready: return "checkmark"
+        case .failed: return "exclamationmark"
+        }
+    }
+
+    private var iconColor: Color {
+        switch state.step {
+        case .saved: return .green
+        case .uploading: return .blue
+        case .processing: return .orange
+        case .ready: return .green
+        case .failed: return .red
+        }
+    }
+
+    private var title: String {
+        switch state.step {
+        case .saved: return "Recording Saved"
+        case .uploading: return "Uploading..."
+        case .processing: return "Processing with AI..."
+        case .ready: return "Memory Ready!"
+        case .failed: return "Processing Failed"
+        }
+    }
+
+    private var subtitle: String {
+        switch state.step {
+        case .saved: return "Preparing upload"
+        case .uploading: return "Sending to server"
+        case .processing: return "Transcribing & summarizing"
+        case .ready: return "View it in Memories tab"
+        case .failed: return "Tap retry in Memories tab"
+        }
     }
 }
 

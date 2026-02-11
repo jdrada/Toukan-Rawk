@@ -3,14 +3,26 @@
 //  toukan
 //
 
+import AVFoundation
 import SwiftUI
 
 struct RecordingRow: View {
     let recording: Recording
     var onRetry: (() -> Void)?
 
+    @State private var isPlaying = false
+    @State private var player: AVAudioPlayer?
+
     var body: some View {
         HStack(spacing: 12) {
+            // Play button
+            Button(action: togglePlayback) {
+                Image(systemName: isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(isPlaying ? .red : .blue)
+            }
+            .buttonStyle(.plain)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(recording.recordedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
                     .font(.headline)
@@ -25,6 +37,54 @@ struct RecordingRow: View {
             statusBadge
         }
         .padding(.vertical, 4)
+        .onDisappear {
+            stopPlayback()
+        }
+    }
+
+    // MARK: - Playback
+
+    private func togglePlayback() {
+        if isPlaying {
+            stopPlayback()
+        } else {
+            startPlayback()
+        }
+    }
+
+    private func startPlayback() {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileURL = documentsURL.appendingPathComponent(recording.filePath)
+
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback)
+            try AVAudioSession.sharedInstance().setActive(true)
+            let audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+            audioPlayer.play()
+            player = audioPlayer
+            isPlaying = true
+
+            // Auto-stop when done
+            Task {
+                try? await Task.sleep(for: .seconds(audioPlayer.duration + 0.1))
+                await MainActor.run {
+                    if isPlaying {
+                        isPlaying = false
+                        player = nil
+                    }
+                }
+            }
+        } catch {
+            print("[RecordingRow] Playback error: \(error)")
+        }
+    }
+
+    private func stopPlayback() {
+        player?.stop()
+        player = nil
+        isPlaying = false
     }
 
     // MARK: - Status Badge

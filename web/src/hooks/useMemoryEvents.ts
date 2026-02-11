@@ -1,25 +1,24 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
-const POLL_INTERVAL = 3000;
+const SLOW_POLL = 1000; // 1s — catch new memories
+const FAST_POLL = 1000;  // 1s — track processing status
 
 /**
- * Hook that keeps memories up-to-date via polling.
- * Tries SSE first; if SSE fails or returns 503, falls back to polling.
- * Polling only runs when there are memories in a pending state.
+ * Hook that keeps memories up-to-date.
+ * Tries SSE first; if it fails, falls back to polling.
+ * Polls every 10s normally, every 3s when memories are processing.
  */
 export function useMemoryEvents(hasPendingMemories: boolean) {
   const queryClient = useQueryClient();
-  const sseRef = useRef<EventSource | null>(null);
-  const sseFailedRef = useRef(false);
+  const [usePolling, setUsePolling] = useState(false);
 
   // Try SSE connection once
   useEffect(() => {
     const es = new EventSource(`${API_URL}/events/memories`);
-    sseRef.current = es;
 
     es.addEventListener("memory-update", (event) => {
       try {
@@ -32,26 +31,23 @@ export function useMemoryEvents(hasPendingMemories: boolean) {
     });
 
     es.addEventListener("error", () => {
-      // SSE not available (Redis disabled), switch to polling
-      sseFailedRef.current = true;
       es.close();
-      sseRef.current = null;
+      setUsePolling(true);
     });
 
     return () => {
       es.close();
-      sseRef.current = null;
     };
   }, [queryClient]);
 
-  // Polling fallback: only when SSE failed and there are pending memories
+  // Polling fallback — always active when SSE is down
   useEffect(() => {
-    if (!sseFailedRef.current || !hasPendingMemories) return;
+    if (!usePolling) return;
 
     const interval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
-    }, POLL_INTERVAL);
+    }, hasPendingMemories ? FAST_POLL : SLOW_POLL);
 
     return () => clearInterval(interval);
-  }, [queryClient, hasPendingMemories]);
+  }, [queryClient, usePolling, hasPendingMemories]);
 }

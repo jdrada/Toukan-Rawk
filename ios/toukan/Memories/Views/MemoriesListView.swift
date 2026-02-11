@@ -13,10 +13,15 @@ struct MemoriesListView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedMemory: Memory?
+    @State private var pollTimer: Timer?
+
+    private var hasPendingMemories: Bool {
+        memories.contains { $0.status == .uploading || $0.status == .processing }
+    }
 
     var body: some View {
         Group {
-            if memories.isEmpty {
+            if memories.isEmpty && !isLoading {
                 emptyState
             } else {
                 memoriesList
@@ -25,6 +30,14 @@ struct MemoriesListView: View {
         .navigationTitle("Memories")
         .task {
             await fetchMemories()
+            startPolling()
+        }
+        .onDisappear {
+            stopPolling()
+        }
+        .onChange(of: hasPendingMemories) {
+            // Restart polling with appropriate interval when status changes
+            startPolling()
         }
         .sheet(item: $selectedMemory) { memory in
             MemoryDetailView(memory: memory)
@@ -76,26 +89,37 @@ struct MemoriesListView: View {
         .padding(40)
     }
 
+    // MARK: - Polling
+
+    private func startPolling() {
+        stopPolling()
+        let interval: TimeInterval = hasPendingMemories ? 1.0 : 10.0
+        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            Task {
+                await fetchMemories()
+            }
+        }
+    }
+
+    private func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
     // MARK: - Actions
 
     private func fetchMemories() async {
-        isLoading = true
-        errorMessage = nil
-
         do {
             let response = try await MemoryAPIClient.fetchMemories()
             memories = response.items
         } catch {
             errorMessage = error.localizedDescription
         }
-
-        isLoading = false
     }
 
     private func deleteMemory(_ memory: Memory) async {
         do {
             try await MemoryAPIClient.deleteMemory(id: memory.id)
-            // Remove from local state on success
             memories.removeAll { $0.id == memory.id }
         } catch {
             errorMessage = "Failed to delete memory: \(error.localizedDescription)"
@@ -115,6 +139,11 @@ private struct MemoryRow: View {
 
             HStack {
                 statusBadge
+
+                if memory.status == .processing {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
 
                 Spacer()
 

@@ -81,7 +81,7 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* Toukan orange gradient colors */
+  /* Brand gradient colors */
   --orange-500: #ff6b35;
   --orange-600: #f7931e;
   --orange-gradient-from: #ff6b35;
@@ -121,7 +121,7 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 
-  /* Toukan orange gradient colors (same in dark mode) */
+  /* Brand gradient colors (same in dark mode) */
   --orange-500: #ff6b35;
   --orange-600: #f7931e;
   --orange-gradient-from: #ff6b35;

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Toukan - Meeting Memories",
+  title: "Memories",
   description: "Record, transcribe, and review your meetings with AI-powered summaries",
 };
 

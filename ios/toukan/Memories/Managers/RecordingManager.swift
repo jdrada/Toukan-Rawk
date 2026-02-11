@@ -60,6 +60,34 @@ final class RecordingManager: NSObject {
         }
     }
 
+    func cancelRecording() {
+        guard isRecording, let recorder = audioRecorder else { return }
+
+        recorder.stop()
+        stopTimer()
+        endBackgroundTask()
+        deactivateAudioSession()
+        clearNowPlayingInfo()
+
+        // Delete the recorded file
+        if let filePath = currentFilePath {
+            let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let fileURL = documentsURL.appendingPathComponent(filePath)
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        isRecording = false
+        isPaused = false
+        elapsedTime = 0
+        audioLevel = 0
+        audioRecorder = nil
+        currentFilePath = nil
+        accumulatedTime = 0
+        recordingStartTime = nil
+
+        print("[RecordingManager] Recording cancelled and file deleted")
+    }
+
     func stopRecording() -> (filePath: String, duration: TimeInterval)? {
         guard isRecording, let recorder = audioRecorder else { return nil }
 

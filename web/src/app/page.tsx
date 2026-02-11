@@ -11,7 +11,7 @@ export default function HomePage() {
         <span className="text-primary">remembered.</span>
       </h1>
       <p className="mt-4 max-w-lg text-lg text-muted-foreground">
-        RAWK records your meetings, transcribes them with AI, and extracts
+        Memories records your meetings, transcribes them with AI, and extracts
         summaries, key points, and action items so nothing gets lost.
       </p>
       <div className="mt-8">
