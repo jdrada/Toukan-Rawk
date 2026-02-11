@@ -196,7 +196,10 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
         Sid    = "RDS"
         Effect = "Allow"
         Action = ["rds:*"]
-        Resource = "arn:aws:rds:us-east-1:${data.aws_caller_identity.current.account_id}:*:${var.app_name}-*"
+        Resource = [
+          "arn:aws:rds:us-east-1:${data.aws_caller_identity.current.account_id}:*:${var.app_name}-*",
+          "arn:aws:rds:us-east-1:${data.aws_caller_identity.current.account_id}:db:*"
+        ]
       },
       {
         Sid    = "RDSSubnetGroup"
@@ -205,7 +208,8 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
           "rds:CreateDBSubnetGroup",
           "rds:DeleteDBSubnetGroup",
           "rds:DescribeDBSubnetGroups",
-          "rds:ModifyDBSubnetGroup"
+          "rds:ModifyDBSubnetGroup",
+          "rds:DescribeDBInstances"
         ]
         Resource = "*"
       },
