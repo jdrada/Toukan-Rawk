@@ -26,7 +26,8 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body.detail || res.statusText);
   }
 
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : undefined;
 }
 
 export async function getMemories(params?: {
