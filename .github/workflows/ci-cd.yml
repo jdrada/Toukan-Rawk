@@ -117,7 +117,7 @@ jobs:
           REPOSITORY: rawk-backend
           IMAGE_TAG: ${{ steps.image-tags.outputs.lambda_image_tag }}
         run: |
-          docker buildx build --platform linux/arm64 \
+          docker buildx build --platform linux/arm64 --provenance=false \
             -t $REGISTRY/$REPOSITORY:$IMAGE_TAG \
             -t $REGISTRY/$REPOSITORY:lambda-latest \
             -f backend/Dockerfile.lambda backend/ --push

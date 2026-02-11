@@ -1,10 +1,10 @@
-# RAWK Deployment Study Guide
+# Guia de Deployment - Memories
 
-Study notes for understanding and explaining every deployment decision in this project.
+Notas para entender y poder explicar cada decision de deployment del proyecto.
 
 ---
 
-## 1. Architecture Overview
+## 1. Como funciona todo junto
 
 ```
                                  +------------------+
@@ -39,55 +39,55 @@ Study notes for understanding and explaining every deployment decision in this p
                                         +--------------+
 ```
 
-**How a request flows:**
+**El flujo paso a paso:**
 
-1. User records audio in the iOS app (or uploads via the web app).
-2. The FastAPI API running on EC2 (Docker container) receives the upload.
-3. The API uploads the audio file to S3 and sends a processing job message to SQS.
-4. The API returns immediately -- the user does not wait for processing.
-5. SQS triggers the Lambda worker. Lambda downloads the audio from S3, sends it to OpenAI Whisper for transcription, then to GPT-4 for analysis.
-6. Lambda saves the results (transcript + memory) back to RDS PostgreSQL.
-7. The client polls the API for status updates until processing is complete.
-
----
-
-## 2. AWS Services & Free Tier Limits
-
-| Service | What it does | Free tier limit |
-|---------|-------------|-----------------|
-| **EC2 t4g.micro** | Runs the FastAPI API container via Docker | 750 hrs/month for 12 months |
-| **RDS PostgreSQL** | Stores users, memories, transcripts | 750 hrs/month db.t3.micro for 12 months |
-| **S3** | Stores uploaded audio files | 5 GB storage for 12 months |
-| **SQS** | Message queue for async processing jobs | 1M requests/month (forever) |
-| **Lambda** | Runs the worker that processes audio | 1M requests + 400K GB-seconds/month (forever) |
-| **ECR** | Stores Docker images for API and Lambda | 500 MB storage (forever) |
-
-The key insight: SQS, Lambda, and ECR have **permanent** free tiers. RDS and S3 free tiers expire after 12 months. That is why the cost jumps slightly after year one.
+1. El usuario graba audio en la app de iOS.
+2. El API (FastAPI corriendo en EC2 con Docker) recibe el archivo.
+3. El API sube el audio a S3 y manda un mensaje a SQS para que se procese.
+4. El API responde de una vez -- el usuario no tiene que esperar a que se procese.
+5. SQS dispara el Lambda worker. Lambda baja el audio de S3, lo manda a OpenAI Whisper para transcribirlo, y despues a GPT-4 para el analisis.
+6. Lambda guarda los resultados (transcripcion + memoria) en la base de datos PostgreSQL.
+7. El cliente hace polling al API hasta que el procesamiento termine.
 
 ---
 
-## 3. Infrastructure as Code (Terraform)
+## 2. Servicios de AWS y limites del free tier
 
-### What is Terraform and why use it?
+| Servicio | Que hace | Limite gratis |
+|----------|----------|---------------|
+| **EC2 t4g.micro** | Corre el API (FastAPI con Docker) | 750 hrs/mes por 12 meses |
+| **RDS PostgreSQL** | Guarda las memorias, transcripciones, etc | 750 hrs/mes db.t3.micro por 12 meses |
+| **S3** | Guarda los archivos de audio | 5 GB por 12 meses |
+| **SQS** | Cola de mensajes para los jobs de procesamiento | 1M requests/mes (para siempre) |
+| **Lambda** | Corre el worker que procesa el audio | 1M requests + 400K GB-seconds/mes (para siempre) |
+| **ECR** | Guarda las imagenes de Docker del API y Lambda | 500 MB (para siempre) |
 
-Terraform lets you define all your cloud infrastructure in code files instead of clicking around the AWS console. Three big reasons to use it:
+Lo importante: SQS, Lambda y ECR tienen free tier **permanente**. RDS y S3 se acaban despues de 12 meses. Por eso el costo sube un poco despues del primer ano.
 
-- **Reproducibility**: Run one command and get the exact same infrastructure every time. No "I forgot to check that box in the console" issues.
-- **Version control**: Infrastructure changes go through the same Git workflow as code -- PRs, reviews, history.
-- **Team collaboration**: Anyone on the team can see what is deployed by reading the `.tf` files.
+---
 
-### Key commands
+## 3. Infraestructura como Codigo (Terraform)
 
-| Command | What it does |
-|---------|-------------|
-| `terraform init` | Downloads providers (AWS plugin), sets up the S3 backend for state |
-| `terraform plan` | Shows what will change without actually changing anything (dry run) |
-| `terraform apply` | Makes the changes for real -- creates/updates/destroys resources |
-| `terraform destroy` | Tears down everything Terraform manages. One command, clean slate. |
+### Que es Terraform y por que usarlo?
 
-### State management
+Terraform te deja definir toda tu infraestructura de nube en archivos de codigo en vez de andar haciendo click en la consola de AWS. Tres razones principales:
 
-Terraform keeps a "state file" that maps your `.tf` code to real AWS resources. Our state is stored remotely in S3:
+- **Reproducible**: Corres un comando y te crea la misma infraestructura cada vez. No mas "se me olvido marcar esa opcion en la consola".
+- **Control de versiones**: Los cambios de infraestructura pasan por el mismo flujo de Git que el codigo -- PRs, reviews, historial.
+- **Trabajo en equipo**: Cualquiera del equipo puede ver que esta desplegado con solo leer los archivos `.tf`.
+
+### Comandos principales
+
+| Comando | Que hace |
+|---------|----------|
+| `terraform init` | Descarga los providers (plugin de AWS), configura el backend de S3 para el state |
+| `terraform plan` | Te muestra que va a cambiar sin cambiar nada (como un dry run) |
+| `terraform apply` | Ejecuta los cambios de verdad -- crea/actualiza/destruye recursos |
+| `terraform destroy` | Tumba todo lo que Terraform maneja. Un comando y listo. |
+
+### El state file
+
+Terraform tiene un "state file" que mapea tu codigo `.tf` a los recursos reales en AWS. Nuestro state esta guardado en S3:
 
 ```hcl
 backend "s3" {
@@ -97,198 +97,196 @@ backend "s3" {
 }
 ```
 
-Why remote state matters:
-- If state is only on your laptop, no one else can run Terraform.
-- S3 backend lets the CI/CD pipeline and any team member run `terraform apply`.
-- State locking (via DynamoDB, if configured) prevents two people from applying at the same time and corrupting state.
+Por que importa tenerlo remoto:
+- Si el state solo esta en tu laptop, nadie mas puede correr Terraform.
+- Con S3, el pipeline de CI/CD y cualquier miembro del equipo puede hacer `terraform apply`.
+- State locking (con DynamoDB) evita que dos personas apliquen cambios al mismo tiempo y corrompan el state.
 
-### Project files and what each does
+### Archivos del proyecto
 
-| File | Purpose |
-|------|---------|
-| `main.tf` | Terraform settings, required providers (AWS ~> 5.0), S3 backend config |
-| `variables.tf` | Input variables: `aws_region`, `db_password` (sensitive), `openai_api_key` (sensitive), `environment`, `app_name` |
-| `network.tf` | Default VPC lookup, security groups for RDS (port 5432 from VPC only) and EC2 API |
-| `ecr.tf` | ECR repository for Docker images, lifecycle policy to keep only last 5 images |
-| `database.tf` | RDS PostgreSQL 16, db.t3.micro, publicly accessible (free tier trade-off), no backups (free tier restriction) |
-| `s3.tf` | S3 bucket for audio, public access blocked, 90-day expiration lifecycle |
-| `sqs.tf` | SQS processing queue with DLQ (3 retries, 14-day retention on DLQ) |
-| `iam.tf` | IAM roles: Lambda execution role (SQS + S3 + logs), EC2 API role (S3 + SQS + ECR) -- all with least-privilege policies |
-| `lambda.tf` | Lambda function (container image), SQS event source mapping (batch size 1) |
-
----
-
-## 4. CI/CD Pipeline (GitHub Actions)
-
-The pipeline lives in `.github/workflows/ci-cd.yml` and has three stages:
-
-### Stage 1: test
-
-- **Trigger**: Every push and PR to `main` (when `backend/` or `terraform/` files change).
-- **What it does**: Sets up Python 3.11, installs dependencies, runs `pytest -v`.
-- **Why**: Catches bugs before anything gets deployed. All 45 tests must pass.
-
-### Stage 2: build-and-push
-
-- **Trigger**: Only on pushes to `main` (not PRs), and only after tests pass.
-- **What it does**:
-  1. Authenticates to AWS using OIDC (no stored access keys).
-  2. Logs in to ECR.
-  3. Builds two Docker images: API (`Dockerfile`) and Lambda worker (`Dockerfile.lambda`).
-  4. Tags each with the git SHA (e.g., `api-a1b2c3d`) plus a `latest` tag.
-  5. Pushes both to ECR.
-
-### Stage 3: deploy
-
-- **Trigger**: Only after build-and-push succeeds.
-- **Manual approval gate**: Uses the `production` environment, which can have required reviewers in GitHub settings. This means someone has to click "approve" before the deploy runs.
-- **What it does**:
-  1. Runs `terraform init` and `terraform apply -auto-approve`.
-  2. Updates the Lambda function to the new image.
-  3. Deploys the new API image to the EC2 instance.
-
-### Why manual approval matters
-
-Production deploys are irreversible in the moment. Even though you can roll back, it is much safer to have a human look at what is about to change before it goes live. The `production` environment in GitHub lets you require one or more reviewers.
-
-### OIDC authentication
-
-Instead of storing long-lived AWS access keys as GitHub Secrets (which could leak), the pipeline uses OpenID Connect (OIDC). GitHub Actions gets a short-lived token from AWS on every run. If someone compromises your GitHub repo, they cannot extract permanent AWS credentials because none exist.
+| Archivo | Para que sirve |
+|---------|----------------|
+| `main.tf` | Config de Terraform, providers (AWS ~> 5.0), backend en S3 |
+| `variables.tf` | Variables: `aws_region`, `db_password` (sensitiva), `openai_api_key` (sensitiva), `environment`, `app_name` |
+| `network.tf` | Busca la VPC default, security groups para RDS (puerto 5432 solo desde la VPC) y EC2 |
+| `ecr.tf` | Repositorio de ECR para imagenes Docker, politica para quedarse solo con las ultimas 5 |
+| `database.tf` | RDS PostgreSQL 16, db.t3.micro, accesible publicamente (trade-off del free tier), sin backups |
+| `s3.tf` | Bucket de S3 para audio, acceso publico bloqueado, expiracion a 90 dias |
+| `sqs.tf` | Cola de SQS con DLQ (3 reintentos, 14 dias de retencion en DLQ) |
+| `iam.tf` | Roles de IAM: Lambda (SQS + S3 + logs), EC2 API (S3 + SQS + ECR) -- todos con permisos minimos |
+| `lambda.tf` | Lambda function (imagen de container), trigger de SQS (batch size 1) |
 
 ---
 
-## 5. Containerization Strategy
+## 4. Pipeline de CI/CD (GitHub Actions)
 
-### Why Docker?
+El pipeline esta en `.github/workflows/ci-cd.yml` y tiene tres etapas:
 
-"It works on my machine" stops being a problem. The same container that runs locally runs identically on EC2 and Lambda. No environment mismatches.
+### Etapa 1: test
 
-### Multi-stage builds (API Dockerfile)
+- **Se dispara**: En cada push y PR a `main` (cuando cambian archivos de `backend/` o `terraform/`).
+- **Que hace**: Instala Python 3.11, instala dependencias, corre `pytest -v`.
+- **Por que**: Para agarrar bugs antes de desplegar. Los 45 tests tienen que pasar.
+
+### Etapa 2: build-and-push
+
+- **Se dispara**: Solo en pushes a `main` (no en PRs), y solo si los tests pasaron.
+- **Que hace**:
+  1. Se autentica en AWS usando OIDC (sin guardar access keys).
+  2. Login a ECR.
+  3. Construye dos imagenes Docker: API (`Dockerfile`) y Lambda worker (`Dockerfile.lambda`).
+  4. Las tagea con el SHA del commit (ej: `api-a1b2c3d`) mas un tag `latest`.
+  5. Pushea las dos a ECR.
+
+### Etapa 3: deploy
+
+- **Se dispara**: Solo despues de que build-and-push termine bien.
+- **Aprobacion manual**: Usa el environment `production` de GitHub, que puede requerir reviewers. Alguien tiene que darle "approve" antes de que corra el deploy.
+- **Que hace**:
+  1. Corre `terraform init` y `terraform apply -auto-approve`.
+  2. Actualiza la Lambda con la nueva imagen.
+  3. Despliega la nueva imagen del API en EC2.
+
+### Por que la aprobacion manual?
+
+Los deploys a produccion son medio irreversibles en el momento. Aunque puedes hacer rollback, es mucho mas seguro que un humano revise lo que va a cambiar antes de que se aplique.
+
+### Autenticacion con OIDC
+
+En vez de guardar access keys de AWS como GitHub Secrets (que se pueden filtrar), el pipeline usa OpenID Connect (OIDC). GitHub Actions recibe un token temporal de AWS en cada ejecucion. Si alguien compromete tu repo de GitHub, no puede sacar credenciales permanentes de AWS porque no existen.
+
+---
+
+## 5. Estrategia de Containers
+
+### Por que Docker?
+
+"En mi maquina si funciona" deja de ser problema. El mismo container que corre en local corre igual en EC2 y Lambda. Sin diferencias de ambiente.
+
+### Multi-stage builds (Dockerfile del API)
 
 ```dockerfile
-# Stage 1: Install dependencies
+# Etapa 1: Instalar dependencias
 FROM python:3.11-slim AS builder
 WORKDIR /app
 COPY requirements.prod.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.prod.txt
 
-# Stage 2: Runtime
+# Etapa 2: Runtime
 FROM python:3.11-slim
 WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY app/ app/
 ```
 
-Why two stages? The first stage installs all build tools and compiles dependencies. The second stage copies only the compiled output. The result is a smaller final image -- no compilers, no pip cache, no build artifacts. Smaller images mean faster deploys and less ECR storage.
+Por que dos etapas? La primera instala todas las herramientas de build y compila dependencias. La segunda solo copia lo compilado. El resultado es una imagen final mas chiquita -- sin compiladores, sin cache de pip, sin artifacts de build. Imagenes mas chiquitas = deploys mas rapidos y menos almacenamiento en ECR.
 
-### Two images
+### Dos imagenes
 
-| Image | Dockerfile | Purpose |
-|-------|-----------|---------|
-| API | `backend/Dockerfile` | Runs `uvicorn` (FastAPI) on EC2 via Docker |
-| Lambda worker | `backend/Dockerfile.lambda` | Based on AWS Lambda Python runtime, runs the SQS handler |
+| Imagen | Dockerfile | Para que |
+|--------|-----------|----------|
+| API | `backend/Dockerfile` | Corre `uvicorn` (FastAPI) en EC2 con Docker |
+| Lambda worker | `backend/Dockerfile.lambda` | Basada en el runtime de AWS Lambda Python, corre el handler de SQS |
 
-They share the same `app/` code and `requirements.prod.txt`, so the business logic is identical.
+Las dos comparten el mismo codigo de `app/` y `requirements.prod.txt`, asi que la logica de negocio es identica.
 
-### Why Python 3.11 in containers when local is 3.9?
+### Por que Python 3.11 en containers si en local tengo 3.9?
 
-The local macOS system Python is 3.9.6. But in production, we control the runtime via Docker. Python 3.11 has significant performance improvements (10-60% faster) and better error messages. Since the container is the actual production environment, we use the best version available. Locally, we develop in a virtualenv and are careful with syntax (e.g., using `Optional[str]` instead of `str | None`).
-
----
-
-## 6. Design Decisions & Trade-offs
-
-### EC2 over App Runner / ECS Fargate
-
-**Decision**: Use EC2 t4g.micro (ARM) running Docker to host the API.
-
-**Why**: App Runner requires a subscription that free-tier-only AWS accounts don't have. ECS Fargate requires an ALB, target groups, task definitions -- too much configuration for a demo. EC2 t4g.micro is free tier eligible (750 hrs/month), and we simply run Docker on it with a user_data startup script.
-
-**Trade-off**: No auto-scaling, no built-in TLS, no managed load balancing. For a demo project with one user, this is perfectly fine. In production, you would use App Runner or ECS Fargate with an ALB.
-
-**Why it is worth it**: Zero cost, simple setup, and the Docker container is identical to what would run on any managed service.
-
-### No Redis in production
-
-**Decision**: Disable Redis (set `REDIS_ENABLED=false` in Lambda config).
-
-**Why**: ElastiCache (managed Redis) is not in the free tier -- even the smallest instance is ~$15/month. For a project aiming at $0/month, that is a non-starter.
-
-**Solution**: Instead of using Redis to publish real-time SSE (Server-Sent Events) for processing status, the frontend simply polls the API for status updates. Polling every few seconds is fine for this use case -- you are waiting for an OpenAI API call that takes 10-30 seconds anyway.
-
-### Lambda for the worker (over ECS)
-
-**Decision**: Use Lambda triggered by SQS instead of a long-running ECS task or background thread.
-
-**Why**:
-- **Event-driven**: Lambda automatically fires when a message lands in SQS. No polling loop to manage.
-- **Pay per invocation**: You pay only when processing happens. Between recordings, cost is $0.
-- **Scales to zero**: No idle containers burning money.
-- **Scales up automatically**: If 10 recordings come in at once, 10 Lambda instances spin up.
-
-**Trade-off**: Lambda has a 15-minute timeout (we set 5 minutes). If processing ever exceeds that, Lambda is not the right fit. For audio transcription, 5 minutes is plenty.
-
-### SQS with Dead Letter Queue (DLQ)
-
-**Decision**: Failed messages retry 3 times, then go to a DLQ that retains them for 14 days.
-
-**Why**: If OpenAI is temporarily down or there is a transient error, the message retries automatically. After 3 failures, the message goes to the DLQ instead of being lost forever. You can inspect the DLQ, fix the issue, and redrive the messages.
-
-**Nothing is lost.** That is the key point.
-
-### Container Lambda over zip deployment
-
-**Decision**: Package the Lambda as a Docker container image instead of a zip file.
-
-**Why**:
-- Same dependencies as the API -- one `requirements.prod.txt`, no separate dependency management.
-- Single build pipeline: the CI/CD builds both images from the same codebase.
-- Easier to test locally: `docker run` the Lambda image with a test event.
-- Zip deployments have a 50MB limit (250MB unzipped). Container images can be up to 10GB.
-
-### S3 for Terraform state
-
-**Decision**: Store Terraform state in S3 rather than locally.
-
-**Why**:
-- The CI/CD pipeline needs access to state to run `terraform apply`.
-- If state is on your laptop and your laptop dies, you cannot manage infrastructure anymore.
-- With remote state, any authorized person or system can run Terraform.
-- S3 gives you versioning -- you can recover a previous state if something goes wrong.
+El Python del sistema en macOS es 3.9.6. Pero en produccion, nosotros controlamos el runtime con Docker. Python 3.11 es significativamente mas rapido (10-60%) y tiene mejores mensajes de error. Como el container es el ambiente real de produccion, usamos la mejor version. En local, desarrollamos en un virtualenv y tenemos cuidado con la sintaxis (ej: usamos `Optional[str]` en vez de `str | None`).
 
 ---
 
-## 7. Security Practices
+## 6. Decisiones de Diseno y Trade-offs
 
-### IAM least privilege
+### EC2 en vez de App Runner / ECS Fargate
 
-Each service only has the permissions it needs. Look at `iam.tf`:
+**Decision**: Usar EC2 t4g.micro (ARM) corriendo Docker para el API.
 
-- **Lambda** can: read from SQS, read from S3, write CloudWatch logs. That is it.
-- **EC2 API** can: write to S3 (upload audio), send messages to SQS, pull ECR images. That is it.
+**Por que**: App Runner requiere una suscripcion que las cuentas free-tier no tienen. ECS Fargate necesita ALB, target groups, task definitions -- demasiada configuracion para un demo. EC2 t4g.micro es gratis (750 hrs/mes), y simplemente corremos Docker con un script de user_data.
 
-If Lambda is compromised, the attacker cannot write to S3 or send SQS messages. If the EC2 instance is compromised, the attacker cannot read from SQS or invoke Lambda.
+**Trade-off**: No hay auto-scaling, no hay TLS integrado, no hay load balancing. Para un demo con un usuario, esta perfecto. En produccion usarias App Runner o ECS Fargate con un ALB.
 
-### No hardcoded secrets
+### Sin Redis en produccion
 
-Sensitive values (`db_password`, `openai_api_key`) are:
-- Defined as `sensitive = true` in `variables.tf` (Terraform redacts them from logs).
-- Stored in GitHub Secrets.
-- Injected at deploy time as `TF_VAR_*` environment variables.
+**Decision**: Redis deshabilitado (`REDIS_ENABLED=false`).
 
-No secrets in code. No secrets in `.tf` files. No secrets in Docker images.
+**Por que**: ElastiCache (Redis manejado) no esta en el free tier -- hasta la instancia mas chiquita cuesta ~$15/mes. Para un proyecto que apunta a $0/mes, no tiene sentido.
 
-### OIDC for CI/CD
+**Solucion**: En vez de usar Redis para publicar eventos en tiempo real (SSE), el frontend simplemente hace polling al API cada unos segundos. Polling esta bien para este caso -- de todas formas estas esperando una llamada a OpenAI que tarda 10-30 segundos.
 
-GitHub Actions authenticates to AWS without long-lived access keys. The pipeline assumes an IAM role via OIDC federation. The temporary credentials expire after the workflow finishes.
+### Lambda para el worker (en vez de ECS)
 
-### RDS access trade-off
+**Decision**: Usar Lambda disparado por SQS en vez de un container corriendo 24/7.
 
-In this free-tier setup, RDS is publicly accessible (with security group restrictions) to avoid the cost of NAT Gateway (~$30/month). The security group restricts port 5432 to the VPC CIDR block.
+**Por que**:
+- **Event-driven**: Lambda se dispara automaticamente cuando llega un mensaje a SQS. No hay que manejar un loop de polling.
+- **Pagas por invocacion**: Solo pagas cuando hay procesamiento. Entre grabaciones, el costo es $0.
+- **Escala a cero**: No hay containers idle quemando plata.
+- **Escala automaticamente**: Si llegan 10 grabaciones a la vez, se levantan 10 instancias de Lambda.
 
-**Production recommendation**: Place RDS in a private subnet with `publicly_accessible = false` and use a NAT Gateway for outbound internet access. This costs more but eliminates any public database exposure.
+**Trade-off**: Lambda tiene un timeout maximo de 15 minutos (nosotros pusimos 5). Si el procesamiento alguna vez toma mas que eso, Lambda no es la opcion. Para transcripcion de audio, 5 minutos es mas que suficiente.
 
-### S3 block public access
+### SQS con Dead Letter Queue (DLQ)
+
+**Decision**: Los mensajes que fallan se reintentan 3 veces, y despues van a una DLQ que los guarda por 14 dias.
+
+**Por que**: Si OpenAI esta caido temporalmente o hay un error transitorio, el mensaje se reintenta automatico. Despues de 3 fallos, el mensaje va a la DLQ en vez de perderse para siempre. Puedes inspeccionar la DLQ, arreglar el problema, y reenviar los mensajes.
+
+**No se pierde nada.** Ese es el punto clave.
+
+### Lambda en container en vez de zip
+
+**Decision**: Empaquetar la Lambda como imagen de Docker en vez de un archivo zip.
+
+**Por que**:
+- Mismas dependencias que el API -- un solo `requirements.prod.txt`, sin manejar dependencias por separado.
+- Un solo pipeline de build: el CI/CD construye las dos imagenes del mismo codebase.
+- Mas facil de probar en local: `docker run` la imagen de Lambda con un evento de prueba.
+- Los deployments con zip tienen un limite de 50MB (250MB descomprimido). Las imagenes de container pueden ser hasta 10GB.
+
+### S3 para el state de Terraform
+
+**Decision**: Guardar el state de Terraform en S3 en vez de localmente.
+
+**Por que**:
+- El pipeline de CI/CD necesita acceso al state para correr `terraform apply`.
+- Si el state solo esta en tu laptop y tu laptop se dana, ya no puedes manejar la infraestructura.
+- Con state remoto, cualquier persona o sistema autorizado puede correr Terraform.
+- S3 tiene versionamiento -- puedes recuperar un state anterior si algo sale mal.
+
+---
+
+## 7. Seguridad
+
+### IAM con permisos minimos
+
+Cada servicio solo tiene los permisos que necesita. Si miras `iam.tf`:
+
+- **Lambda** puede: leer de SQS, leer de S3, escribir logs a CloudWatch. Nada mas.
+- **EC2 API** puede: escribir a S3 (subir audio), mandar mensajes a SQS, bajar imagenes de ECR. Nada mas.
+
+Si Lambda se compromete, el atacante no puede escribir a S3 ni mandar mensajes a SQS. Si EC2 se compromete, el atacante no puede leer de SQS ni invocar Lambda.
+
+### Sin secretos en el codigo
+
+Los valores sensitivos (`db_password`, `openai_api_key`):
+- Estan definidos como `sensitive = true` en `variables.tf` (Terraform los oculta de los logs).
+- Estan guardados en GitHub Secrets.
+- Se inyectan al momento del deploy como variables de ambiente `TF_VAR_*`.
+
+No hay secretos en el codigo. No hay secretos en los archivos `.tf`. No hay secretos en las imagenes de Docker.
+
+### OIDC para CI/CD
+
+GitHub Actions se autentica en AWS sin access keys permanentes. El pipeline asume un IAM role via OIDC federation. Las credenciales temporales expiran cuando termina el workflow.
+
+### RDS accesible publicamente (trade-off)
+
+En este setup de free tier, RDS es accesible publicamente (pero con restricciones de security group) para evitar el costo del NAT Gateway (~$30/mes). El security group restringe el puerto 5432 al CIDR de la VPC.
+
+**Para produccion**: Pondrias RDS en una subnet privada con `publicly_accessible = false` y usarias un NAT Gateway. Cuesta mas pero elimina cualquier exposicion publica de la base de datos.
+
+### S3 con acceso publico bloqueado
 
 ```hcl
 block_public_acls       = true
@@ -297,100 +295,100 @@ ignore_public_acls      = true
 restrict_public_buckets = true
 ```
 
-All four public access blocks are enabled. Audio files are never exposed to the internet. Only the EC2 and Lambda roles (via IAM) can read/write objects.
+Los cuatro bloqueos de acceso publico estan activados. Los archivos de audio nunca estan expuestos al internet. Solo los roles de EC2 y Lambda (via IAM) pueden leer/escribir objetos.
 
 ---
 
-## 8. Interview Talking Points
+## 8. Puntos para la Entrevista
 
-Things to say confidently:
+Cosas que puedes decir con confianza:
 
-- "I used **Terraform for infrastructure as code** because it makes the infrastructure reproducible, version-controlled, and reviewable through the same Git workflow as application code."
+- "Use **Terraform para infraestructura como codigo** porque hace la infraestructura reproducible, versionada, y revisable por el mismo flujo de Git que el codigo de la aplicacion."
 
-- "The CI/CD pipeline has a **manual approval gate** because deploying to production should be a deliberate human decision. Tests pass automatically, images build automatically, but someone has to approve the actual deploy."
+- "El pipeline de CI/CD tiene una **aprobacion manual** porque desplegar a produccion debe ser una decision humana deliberada. Los tests pasan automaticamente, las imagenes se construyen automaticamente, pero alguien tiene que aprobar el deploy."
 
-- "I used **EC2 with Docker** for the API because App Runner was not available on my free-tier account and ECS Fargate requires too much configuration for a demo. The Docker container is portable -- switching to App Runner or ECS in production is just a Terraform change."
+- "Use **EC2 con Docker** para el API porque App Runner no estaba disponible en mi cuenta free-tier y ECS Fargate requiere demasiada configuracion para un demo. El container de Docker es portable -- cambiar a App Runner o ECS en produccion es solo un cambio en Terraform."
 
-- "**Lambda is ideal for the worker** because it is event-driven (triggered by SQS), scales to zero when idle, and you only pay per invocation. There is no reason to keep a container running 24/7 waiting for occasional processing jobs."
+- "**Lambda es ideal para el worker** porque es event-driven (se dispara por SQS), escala a cero cuando no se usa, y solo pagas por invocacion. No tiene sentido tener un container corriendo 24/7 esperando jobs de procesamiento ocasionales."
 
-- "The **DLQ pattern ensures no messages are lost**. If processing fails three times, the message moves to a dead letter queue where it is retained for 14 days. I can inspect failures, fix the issue, and redrive the messages."
+- "El **patron de DLQ asegura que no se pierdan mensajes**. Si el procesamiento falla tres veces, el mensaje va a una dead letter queue donde se retiene por 14 dias. Puedo inspeccionar los fallos, arreglar el problema, y reenviar los mensajes."
 
-- "I implemented **graceful degradation** -- if the LLM analysis fails, we still save the raw transcript. The user gets their transcription even if the AI summary step has an error."
+- "Implemente **degradacion elegante** -- si el analisis del LLM falla, igual guardamos la transcripcion. El usuario recibe su transcripcion aunque el paso de resumen con AI tenga un error."
 
-- "All infrastructure can be **torn down with one command**: `terraform destroy`. There is nothing manually created, so cleanup is complete and reliable."
+- "Toda la infraestructura se puede **tumbar con un solo comando**: `terraform destroy`. No hay nada creado manualmente, asi que la limpieza es completa."
 
-- "The pipeline runs **45 automated tests** before any deployment. Tests use in-memory SQLite and AsyncMock so they are fast and do not need real AWS or OpenAI credentials."
+- "El pipeline corre **45 tests automatizados** antes de cualquier deployment. Los tests usan SQLite en memoria y AsyncMock asi que son rapidos y no necesitan credenciales reales de AWS u OpenAI."
 
-- "I use **OIDC authentication** for CI/CD instead of long-lived AWS access keys. This eliminates the risk of credential leaks from the GitHub repository."
+- "Uso **autenticacion OIDC** para CI/CD en vez de access keys permanentes de AWS. Esto elimina el riesgo de que se filtren credenciales del repositorio de GitHub."
 
-- "Every service follows **least-privilege IAM**. Lambda can only read from S3 and SQS. The EC2 API can only write to S3 and send to SQS. If one service is compromised, the blast radius is limited."
+- "Cada servicio sigue **IAM con permisos minimos**. Lambda solo puede leer de S3 y SQS. El API en EC2 solo puede escribir a S3 y mandar a SQS. Si un servicio se compromete, el alcance del dano es limitado."
 
 ---
 
-## 9. Cost Estimation
+## 9. Costos
 
-### Within free tier (first 12 months): ~$0/month
+### Dentro del free tier (primeros 12 meses): ~$0/mes
 
-| Service | Cost |
-|---------|------|
-| EC2 t4g.micro | Free (750 hrs/month) |
-| RDS db.t3.micro | Free (750 hrs/month) |
-| S3 | Free (under 5 GB) |
-| SQS | Free (under 1M requests) |
-| Lambda | Free (under 1M invocations) |
-| ECR | Free (under 500 MB, lifecycle keeps only 5 images) |
+| Servicio | Costo |
+|----------|-------|
+| EC2 t4g.micro | Gratis (750 hrs/mes) |
+| RDS db.t3.micro | Gratis (750 hrs/mes) |
+| S3 | Gratis (menos de 5 GB) |
+| SQS | Gratis (menos de 1M requests) |
+| Lambda | Gratis (menos de 1M invocaciones) |
+| ECR | Gratis (menos de 500 MB, lifecycle deja solo 5 imagenes) |
 
-### After 12 months (RDS + S3 free tier expires): ~$15-20/month
+### Despues de 12 meses (free tier de RDS + S3 expira): ~$15-20/mes
 
-| Service | Estimated cost |
-|---------|---------------|
-| RDS db.t3.micro | ~$13/month |
-| S3 (a few GB) | ~$0.10/month |
-| EC2 t4g.micro | ~$8/month |
-| SQS | Still free (forever) |
-| Lambda | Still free (forever) |
-| ECR | Still free (forever) |
-| **Total** | **~$21-23/month** |
+| Servicio | Costo estimado |
+|----------|---------------|
+| RDS db.t3.micro | ~$13/mes |
+| S3 (unos pocos GB) | ~$0.10/mes |
+| EC2 t4g.micro | ~$8/mes |
+| SQS | Sigue gratis (para siempre) |
+| Lambda | Sigue gratis (para siempre) |
+| ECR | Sigue gratis (para siempre) |
+| **Total** | **~$21-23/mes** |
 
-### How to tear down everything
+### Como tumbar todo
 
 ```bash
 cd terraform
 terraform destroy
 ```
 
-This removes all AWS resources. The only thing left behind is the S3 bucket used for Terraform state itself (which you would delete manually if you want a completely clean account).
+Esto elimina todos los recursos de AWS. Lo unico que queda es el bucket de S3 del state de Terraform (que lo borras manualmente si quieres dejar la cuenta completamente limpia).
 
 ---
 
-## 10. Commands Cheatsheet
+## 10. Comandos Utiles
 
-### Local development
+### Desarrollo local
 
 ```bash
-# Start backend dependencies (PostgreSQL + Redis)
+# Levantar dependencias del backend (PostgreSQL + Redis)
 cd backend
 docker compose up -d
 
-# Activate virtualenv and run the API
+# Activar virtualenv y correr el API
 source venv/bin/activate
 uvicorn app.main:app --reload
 
-# Run tests
+# Correr tests
 python -m pytest -v
 ```
 
 ### Docker
 
 ```bash
-# Build API image locally
-docker build -t rawk-api -f backend/Dockerfile backend/
+# Construir imagen del API
+docker build -t memories-api -f backend/Dockerfile backend/
 
-# Build Lambda image locally
-docker build -t rawk-lambda -f backend/Dockerfile.lambda backend/
+# Construir imagen de Lambda
+docker build -t memories-lambda -f backend/Dockerfile.lambda backend/
 
-# Run API locally in Docker
-docker run -p 8000:8000 --env-file .env rawk-api
+# Correr API localmente en Docker
+docker run -p 8000:8000 --env-file .env memories-api
 ```
 
 ### Terraform
@@ -398,55 +396,55 @@ docker run -p 8000:8000 --env-file .env rawk-api
 ```bash
 cd terraform
 
-# Initialize (downloads providers, connects to S3 backend)
+# Inicializar (descarga providers, conecta al backend de S3)
 terraform init
 
-# Preview changes (dry run)
+# Ver que va a cambiar (dry run)
 terraform plan
 
-# Apply changes (creates/updates resources)
+# Aplicar cambios (crea/actualiza recursos)
 terraform apply
 
-# Tear down everything
+# Tumbar todo
 terraform destroy
 
-# See current state
+# Ver el state actual
 terraform show
 
-# See specific resource
+# Ver un recurso especifico
 terraform state show aws_lambda_function.sqs_processor
 ```
 
-### ECR (push images manually)
+### ECR (push manual de imagenes)
 
 ```bash
-# Login to ECR
+# Login a ECR
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
 
-# Tag and push
-docker tag rawk-api:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/rawk-backend:api-latest
+# Tag y push
+docker tag memories-api:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/rawk-backend:api-latest
 docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/rawk-backend:api-latest
 ```
 
-### Useful AWS CLI commands
+### Comandos utiles de AWS CLI
 
 ```bash
-# Check EC2 instance status
+# Ver estado de la instancia EC2
 aws ec2 describe-instances --filters "Name=tag:Name,Values=rawk-api" --query "Reservations[].Instances[].{ID:InstanceId,State:State.Name,IP:PublicIpAddress}"
 
-# Check Lambda function
+# Ver la Lambda function
 aws lambda get-function --function-name rawk-sqs-processor
 
-# Check SQS queue depth (how many messages waiting)
+# Ver cuantos mensajes hay en la cola de SQS
 aws sqs get-queue-attributes \
   --queue-url <queue-url> \
   --attribute-names ApproximateNumberOfMessages
 
-# Check DLQ for failed messages
+# Ver la DLQ por mensajes fallidos
 aws sqs get-queue-attributes \
   --queue-url <dlq-url> \
   --attribute-names ApproximateNumberOfMessages
 
-# View Lambda logs
+# Ver logs de Lambda
 aws logs tail /aws/lambda/rawk-sqs-processor --follow
 ```

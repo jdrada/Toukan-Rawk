@@ -146,8 +146,8 @@ Por que descartamos React Native:
 **Backend:**
 
 - Python + FastAPI
-- PostgreSQL (Neon)
-- Celery + Redis (para async jobs, o RQ mas simple)
+- PostgreSQL (RDS)
+- SQS + Lambda para los jobs
 - OpenAI SDK (Whisper + GPT-4 turbo)
 
 **Web:**
@@ -160,89 +160,8 @@ Por que descartamos React Native:
 - RDS PostgreSQL para base de datos
 - SQS para async queue (audio processing jobs)
 - Lambda para procesar audios (Whisper + GPT-4)
-- API Gateway para exponer endpoints REST
-- CloudFront para servir web (o Amplify)
+- App Runner para correr el backend (Docker)
+- Vercel para web
 - OpenAI API para Whisper + GPT-4 turbo
 
 ---
-
-## Deploy a AWS (Free Tier)
-
-### Contexto
-
-Despues de completar el backend (FastAPI + PostgreSQL + SQS + S3 + Lambda worker, 45 tests pasando), hicimos el deploy completo a AWS usando solo servicios del Free Tier para demostrar capacidades de DevOps y pipelines de deploy.
-
-### Arquitectura desplegada
-
-```
-iOS App → EC2 t4g.micro (FastAPI en Docker) → RDS PostgreSQL (db.t3.micro)
-               ↓                                      ↑
-            S3 (audio)                           Lambda Worker
-               ↓                                      ↑
-            SQS Queue ────────────────────────────────┘
-                                                       ↓
-                                                  OpenAI API
-```
-
-### Servicios AWS
-
-| Servicio | Que hace | Free Tier |
-|----------|----------|-----------|
-| EC2 t4g.micro | Corre la API FastAPI en Docker | 750 hrs/mes por 12 meses |
-| RDS PostgreSQL | Base de datos (memorias, transcripts) | 750 hrs/mes db.t3.micro por 12 meses |
-| S3 | Almacena archivos de audio | 5 GB por 12 meses |
-| SQS + DLQ | Cola de mensajes para procesamiento async | 1M requests/mes (permanente) |
-| Lambda | Worker que procesa audio (Whisper + GPT-4) | 1M requests/mes (permanente) |
-| ECR | Almacena imagenes Docker | 500 MB (permanente) |
-
-### Decisiones tecnicas clave
-
-1. **EC2 en vez de App Runner**: App Runner requiere una suscripcion especial que las cuentas free-tier-only no tienen. EC2 t4g.micro (ARM) es free tier y corre Docker directamente.
-
-2. **Redis deshabilitado en produccion**: ElastiCache no tiene free tier (~$15/mes). Implementamos `NullRedisClient` (clase no-op) y el frontend hace polling en vez de SSE.
-
-3. **RDS publicamente accesible**: Para evitar el costo de NAT Gateway (~$30/mes) que se necesitaria con VPC privado. Seguridad via Security Groups que restringen el acceso.
-
-4. **Lambda desde contenedor Docker**: Misma base de codigo que la API, un solo `requirements.prod.txt`, mas facil de testear localmente.
-
-5. **SQS con Dead Letter Queue**: 3 reintentos antes de mover al DLQ (14 dias de retencion). Ningun mensaje se pierde.
-
-### Infraestructura como Codigo (Terraform)
-
-Todo definido en `terraform/` con archivos modulares:
-- `main.tf` — Provider AWS, backend S3 para state
-- `variables.tf` — Variables sensibles (db_password, openai_api_key)
-- `network.tf` — VPC default, security groups
-- `database.tf` — RDS PostgreSQL 16
-- `s3.tf` — Bucket de audio con lifecycle 90 dias
-- `sqs.tf` — Cola principal + DLQ
-- `lambda.tf` — Lambda desde ECR con trigger SQS
-- `apprunner.tf` — EC2 instance con Docker
-- `iam.tf` — Roles IAM least-privilege
-- `ecr.tf` — Repositorio de imagenes Docker
-
-### CI/CD (GitHub Actions)
-
-Pipeline en `.github/workflows/ci-cd.yml` con 3 stages:
-1. **test** — Corre pytest (45 tests) en cada push/PR
-2. **build-and-push** — Construye imagenes Docker (API + Lambda), push a ECR con SHA tags
-3. **deploy** — Manual approval gate, terraform apply, actualiza Lambda y EC2
-
-### Dockerfiles
-
-- `backend/Dockerfile` — Multi-stage build (python:3.11-slim), corre uvicorn
-- `backend/Dockerfile.lambda` — Base AWS Lambda Python 3.11, handler SQS
-
-### Estado actual del deploy
-
-- API corriendo en: `http://23.20.135.83:8000`
-- Health check confirmado: `{"status":"ok","service":"rawk-backend"}`
-- Todos los recursos AWS creados y funcionando
-
-### Problemas encontrados y resueltos
-
-1. **RDS backup retention**: Free tier no permite backups. Solucion: `backup_retention_period = 0`
-2. **App Runner no disponible**: Cuentas free-tier-only no pueden usar App Runner. Solucion: EC2 t4g.micro con Docker
-3. **Lambda image tag**: Referenciaba `:latest` pero pusheamos `:lambda-latest`. Corregido en terraform
-4. **S3 lifecycle warning**: Faltaba bloque `filter {}`. Agregado
-5. **IAM roles huerfanos**: Despues de remover App Runner del codigo, los roles quedaron en state. Limpieza con `terraform state rm`
