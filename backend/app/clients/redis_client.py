@@ -6,7 +6,10 @@ import json
 import logging
 from typing import Optional, Any, Dict
 
-import redis.asyncio as redis
+try:
+    import redis.asyncio as redis
+except ImportError:
+    redis = None  # type: ignore[assignment]
 
 from app.config import Settings
 

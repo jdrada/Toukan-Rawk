@@ -17,10 +17,5 @@ greenlet>=3.0.0
 # OpenAI
 openai>=1.50.0
 
-# Task Queue
-celery==5.3.4
-redis==5.0.1
-
 # Utilities
 python-dotenv==1.0.0
-requests==2.31.0
