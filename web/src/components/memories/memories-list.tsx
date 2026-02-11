@@ -7,9 +7,10 @@ import { MemoryCard } from "@/components/memories/memory-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/memories/pagination";
 import { MemoryStatus } from "@/types/memory";
-import { useMemoryEvents } from "@/hooks/useMemoryEvents";
 
 const PAGE_SIZE = 12;
+const SLOW_POLL = 10_000;
+const FAST_POLL = 3_000;
 
 export function MemoriesList() {
   const searchParams = useSearchParams();
@@ -20,12 +21,14 @@ export function MemoriesList() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["memories", { page, search, status }],
     queryFn: () => getMemories({ page, page_size: PAGE_SIZE, search, status }),
+    refetchInterval: (query) => {
+      const items = query.state.data?.items;
+      const hasPending = items?.some(
+        (m) => m.status === MemoryStatus.UPLOADING || m.status === MemoryStatus.PROCESSING
+      );
+      return hasPending ? FAST_POLL : SLOW_POLL;
+    },
   });
-
-  const hasPendingMemories = !!data?.items.some(
-    (m) => m.status === MemoryStatus.UPLOADING || m.status === MemoryStatus.PROCESSING
-  );
-  useMemoryEvents(hasPendingMemories);
 
   if (error) {
     return (
