@@ -12,12 +12,14 @@ on:
     paths:
       - 'backend/**'
       - 'terraform/**'
+      - 'web/**'
   pull_request:
     branches:
       - main
     paths:
       - 'backend/**'
       - 'terraform/**'
+      - 'web/**'
 
 jobs:
   test:
@@ -41,8 +43,27 @@ jobs:
       - name: Run tests
         run: cd backend && python -m pytest -v
 
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Install dependencies
+        run: cd web && npm ci
+
+      - name: Type check and build
+        run: cd web && npm run build
+
   build-and-push:
-    needs: test
+    needs: [test, test-web]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

@@ -6,6 +6,7 @@ import { getMemories } from "@/lib/api";
 import { MemoryCard } from "@/components/memories/memory-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/memories/pagination";
+import { MemoryStatus } from "@/types/memory";
 import { useMemoryEvents } from "@/hooks/useMemoryEvents";
 
 const PAGE_SIZE = 12;
@@ -16,13 +17,15 @@ export function MemoriesList() {
   const search = searchParams.get("search") || undefined;
   const status = searchParams.get("status") || undefined;
 
-  // Establish SSE connection for real-time updates
-  useMemoryEvents();
-
   const { data, isLoading, error } = useQuery({
     queryKey: ["memories", { page, search, status }],
     queryFn: () => getMemories({ page, page_size: PAGE_SIZE, search, status }),
   });
+
+  const hasPendingMemories = !!data?.items.some(
+    (m) => m.status === MemoryStatus.UPLOADING || m.status === MemoryStatus.PROCESSING
+  );
+  useMemoryEvents(hasPendingMemories);
 
   if (error) {
     return (

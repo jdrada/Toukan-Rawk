@@ -46,13 +46,14 @@ export function MemoryDetailClient({ id }: MemoryDetailClientProps) {
   const queryClient = useQueryClient();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Establish SSE connection for real-time updates
-  useMemoryEvents();
-
   const { data: memory, isLoading, error } = useQuery({
     queryKey: ["memory", id],
     queryFn: () => getMemory(id),
   });
+
+  const isPending =
+    memory?.status === MemoryStatus.UPLOADING || memory?.status === MemoryStatus.PROCESSING;
+  useMemoryEvents(isPending ?? false);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteMemory(id),

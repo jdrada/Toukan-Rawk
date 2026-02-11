@@ -1,87 +1,57 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
-
-// Global EventSource instance shared across all components
-let globalEventSource: EventSource | null = null;
-let connectionCount = 0;
-let queryClientRef: ReturnType<typeof useQueryClient> | null = null;
+const POLL_INTERVAL = 3000;
 
 /**
- * Hook that establishes a SHARED Server-Sent Events connection to receive real-time memory updates.
- * Only creates ONE connection regardless of how many components use this hook.
- * Automatically invalidates TanStack Query cache when updates arrive.
- *
- * Detects:
- * - New memories being created/uploaded
- * - Status changes (uploading → processing → ready/failed)
- * - Any updates to existing memories
+ * Hook that keeps memories up-to-date via polling.
+ * Tries SSE first; if SSE fails or returns 503, falls back to polling.
+ * Polling only runs when there are memories in a pending state.
  */
-export function useMemoryEvents() {
+export function useMemoryEvents(hasPendingMemories: boolean) {
   const queryClient = useQueryClient();
+  const sseRef = useRef<EventSource | null>(null);
+  const sseFailedRef = useRef(false);
 
+  // Try SSE connection once
   useEffect(() => {
-    connectionCount++;
-    queryClientRef = queryClient;
+    const es = new EventSource(`${API_URL}/events/memories`);
+    sseRef.current = es;
 
-    console.log(`[SSE] Component mounted (active connections: ${connectionCount})`);
-
-    // Create EventSource only if it doesn't exist yet
-    if (!globalEventSource) {
-      console.log("[SSE] Creating new EventSource connection...");
-      globalEventSource = new EventSource(`${API_URL}/events/memories`);
-
-      // Listen for memory-update events
-      globalEventSource.addEventListener("memory-update", (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log("[SSE] Memory update received:", data);
-
-          // Use the stored queryClient reference to invalidate queries
-          if (queryClientRef) {
-            // Invalidate all memory queries to trigger refetch
-            queryClientRef.invalidateQueries({ queryKey: ["memories"] });
-
-            // Also invalidate the specific memory detail query
-            if (data.memory_id) {
-              queryClientRef.invalidateQueries({
-                queryKey: ["memory", data.memory_id]
-              });
-            }
-          }
-        } catch (error) {
-          console.error("[SSE] Failed to parse memory-update event:", error);
+    es.addEventListener("memory-update", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        queryClient.invalidateQueries({ queryKey: ["memories"] });
+        if (data.memory_id) {
+          queryClient.invalidateQueries({ queryKey: ["memory", data.memory_id] });
         }
-      });
+      } catch {}
+    });
 
-      // Handle connection open
-      globalEventSource.addEventListener("open", () => {
-        console.log("[SSE] ✅ Connection established");
-      });
+    es.addEventListener("error", () => {
+      // SSE not available (Redis disabled), switch to polling
+      sseFailedRef.current = true;
+      es.close();
+      sseRef.current = null;
+    });
 
-      // Handle errors
-      globalEventSource.addEventListener("error", (error) => {
-        console.error("[SSE] Connection error:", error);
-        // EventSource automatically attempts to reconnect
-      });
-    } else {
-      console.log("[SSE] Reusing existing EventSource connection");
-    }
-
-    // Cleanup: only close connection when last component unmounts
     return () => {
-      connectionCount--;
-      console.log(`[SSE] Component unmounted (active connections: ${connectionCount})`);
-
-      if (connectionCount === 0 && globalEventSource) {
-        console.log("[SSE] Closing EventSource connection (no more listeners)");
-        globalEventSource.close();
-        globalEventSource = null;
-        queryClientRef = null;
-      }
+      es.close();
+      sseRef.current = null;
     };
   }, [queryClient]);
+
+  // Polling fallback: only when SSE failed and there are pending memories
+  useEffect(() => {
+    if (!sseFailedRef.current || !hasPendingMemories) return;
+
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+    }, POLL_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [queryClient, hasPendingMemories]);
 }
