@@ -83,7 +83,10 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
         Sid    = "Lambda"
         Effect = "Allow"
         Action = ["lambda:*"]
-        Resource = "arn:aws:lambda:us-east-1:${data.aws_caller_identity.current.account_id}:function:${var.app_name}-*"
+        Resource = [
+          "arn:aws:lambda:us-east-1:${data.aws_caller_identity.current.account_id}:function:${var.app_name}-*",
+          "arn:aws:lambda:us-east-1:${data.aws_caller_identity.current.account_id}:event-source-mapping:*"
+        ]
       },
       {
         Sid    = "LambdaEventSource"
