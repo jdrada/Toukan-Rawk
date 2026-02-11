@@ -50,13 +50,13 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "ECRAuth"
         Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken"
-        ]
+        Action = ["ecr:GetAuthorizationToken"]
         Resource = "*"
       },
       {
+        Sid    = "ECRRepo"
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",
@@ -65,44 +65,155 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
           "ecr:PutImage",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload"
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeRepositories",
+          "ecr:CreateRepository",
+          "ecr:DeleteRepository",
+          "ecr:PutLifecyclePolicy",
+          "ecr:GetLifecyclePolicy",
+          "ecr:ListTagsForResource",
+          "ecr:TagResource",
+          "ecr:GetRepositoryPolicy",
+          "ecr:SetRepositoryPolicy",
+          "ecr:DeleteLifecyclePolicy"
         ]
         Resource = aws_ecr_repository.backend.arn
       },
       {
+        Sid    = "Lambda"
         Effect = "Allow"
-        Action = [
-          "lambda:UpdateFunctionCode",
-          "lambda:GetFunction"
-        ]
-        Resource = aws_lambda_function.sqs_processor.arn
+        Action = ["lambda:*"]
+        Resource = "arn:aws:lambda:us-east-1:${data.aws_caller_identity.current.account_id}:function:${var.app_name}-*"
       },
       {
+        Sid    = "LambdaEventSource"
         Effect = "Allow"
         Action = [
-          "ec2:DescribeInstances"
+          "lambda:CreateEventSourceMapping",
+          "lambda:DeleteEventSourceMapping",
+          "lambda:GetEventSourceMapping",
+          "lambda:UpdateEventSourceMapping",
+          "lambda:ListEventSourceMappings"
         ]
         Resource = "*"
       },
       {
+        Sid    = "EC2"
         Effect = "Allow"
         Action = [
-          "ssm:SendCommand",
-          "ssm:GetCommandInvocation"
+          "ec2:Describe*",
+          "ec2:CreateSecurityGroup",
+          "ec2:DeleteSecurityGroup",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:CreateTags",
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          "ec2:StopInstances",
+          "ec2:StartInstances"
         ]
         Resource = "*"
       },
       {
+        Sid    = "SSM"
         Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket"
-        ]
+        Action = ["ssm:SendCommand", "ssm:GetCommandInvocation"]
+        Resource = "*"
+      },
+      {
+        Sid    = "S3TerraformState"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"]
         Resource = [
           "arn:aws:s3:::rawk-terraform-state",
           "arn:aws:s3:::rawk-terraform-state/*"
         ]
+      },
+      {
+        Sid    = "S3Audio"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:GetBucket*",
+          "s3:PutBucket*",
+          "s3:ListBucket",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:GetLifecycleConfiguration",
+          "s3:PutLifecycleConfiguration",
+          "s3:GetAccelerateConfiguration",
+          "s3:GetEncryptionConfiguration",
+          "s3:GetReplicationConfiguration",
+          "s3:PutEncryptionConfiguration"
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.app_name}-audio-*",
+          "arn:aws:s3:::${var.app_name}-audio-*/*"
+        ]
+      },
+      {
+        Sid    = "SQS"
+        Effect = "Allow"
+        Action = ["sqs:*"]
+        Resource = "arn:aws:sqs:us-east-1:${data.aws_caller_identity.current.account_id}:${var.app_name}-*"
+      },
+      {
+        Sid    = "IAM"
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+          "iam:ListInstanceProfilesForRole",
+          "iam:PassRole",
+          "iam:CreateInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:GetInstanceProfile",
+          "iam:GetOpenIDConnectProvider",
+          "iam:CreateOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:TagOpenIDConnectProvider",
+          "iam:TagInstanceProfile"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "RDS"
+        Effect = "Allow"
+        Action = ["rds:*"]
+        Resource = "arn:aws:rds:us-east-1:${data.aws_caller_identity.current.account_id}:*:${var.app_name}-*"
+      },
+      {
+        Sid    = "RDSSubnetGroup"
+        Effect = "Allow"
+        Action = [
+          "rds:CreateDBSubnetGroup",
+          "rds:DeleteDBSubnetGroup",
+          "rds:DescribeDBSubnetGroups",
+          "rds:ModifyDBSubnetGroup"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "STS"
+        Effect = "Allow"
+        Action = ["sts:GetCallerIdentity"]
+        Resource = "*"
       }
     ]
   })
